@@ -15,10 +15,15 @@ enum ListKind: String, Codable {
 
 @Model
 final class List {
+    @Attribute(.unique) var slug: String
     var title: String
     var notes: String
     var kindRaw: String
     var sortIndex: Int
+    // Mirror of `space == nil`, kept in sync via `init` and `move(to:at:context:)`.
+    // Stored to keep `@Query` predicates straightforward (SwiftData predicates on
+    // optional to-one relationships are fragile).
+    var isLoose: Bool
     var createdAt: Date
     var updatedAt: Date
 
@@ -36,11 +41,14 @@ final class List {
          notes: String = "",
          kind: ListKind = .user,
          space: Space? = nil,
-         sortIndex: Int = 0) {
+         sortIndex: Int = 0,
+         slug: String = UUID().uuidString) {
+        self.slug = slug
         self.title = title
         self.notes = notes
         self.kindRaw = kind.rawValue
         self.sortIndex = sortIndex
+        self.isLoose = (space == nil)
         self.createdAt = .now
         self.updatedAt = .now
         self.space = space
@@ -52,19 +60,31 @@ final class List {
 }
 
 extension List {
+    static let inboxSlug = "inbox"
+
     static func ensureInbox(in context: ModelContext) {
-        let inboxRaw = ListKind.inbox.rawValue
+        let slug = inboxSlug
         let descriptor = FetchDescriptor<List>(
-            predicate: #Predicate { $0.kindRaw == inboxRaw }
+            predicate: #Predicate { $0.slug == slug }
         )
         do {
             let existing = try context.fetch(descriptor)
             if existing.isEmpty == false { return }
-            let inbox = List(title: "Inbox", kind: .inbox)
+            let inbox = List(title: "Inbox", kind: .inbox, slug: inboxSlug)
             context.insert(inbox)
             try context.save()
         } catch {
             assertionFailure("Inbox bootstrap failed: \(error)")
         }
+    }
+
+    // Centralized re-parent / re-order entry point. Pass `index = nil` to append
+    // to the end of the destination scope (across both Lists and Projects).
+    func move(to space: Space?, at index: Int? = nil, context: ModelContext) {
+        let destination = index ?? Containers.nextSortIndex(in: space, context: context)
+        self.space = space
+        self.isLoose = (space == nil)
+        self.sortIndex = destination
+        touch()
     }
 }

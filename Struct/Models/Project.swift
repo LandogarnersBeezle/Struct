@@ -19,6 +19,8 @@ final class Project {
     }
     var completedAt: Date?
     var sortIndex: Int
+    // Mirror of `space == nil`; see `List.isLoose` for rationale.
+    var isLoose: Bool
     var createdAt: Date
     var updatedAt: Date
 
@@ -36,6 +38,7 @@ final class Project {
         self.isCompleted = false
         self.completedAt = nil
         self.sortIndex = sortIndex
+        self.isLoose = (space == nil)
         self.createdAt = .now
         self.updatedAt = .now
         self.space = space
@@ -43,5 +46,15 @@ final class Project {
 
     func touch() {
         updatedAt = .now
+    }
+}
+
+extension Project {
+    func move(to space: Space?, at index: Int? = nil, context: ModelContext) {
+        let destination = index ?? Containers.nextSortIndex(in: space, context: context)
+        self.space = space
+        self.isLoose = (space == nil)
+        self.sortIndex = destination
+        touch()
     }
 }

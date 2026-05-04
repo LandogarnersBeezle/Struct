@@ -15,11 +15,14 @@ struct ContainersView: View {
     private var inboxLists: [List]
 
     @Query(sort: \Space.sortIndex) private var spaces: [Space]
-    @Query(sort: \Project.sortIndex) private var projects: [Project]
 
-    @Query(filter: #Predicate<List> { $0.kindRaw != "inbox" },
+    @Query(filter: #Predicate<List> { $0.isLoose && $0.kindRaw != "inbox" },
            sort: \List.sortIndex)
-    private var userLists: [List]
+    private var looseLists: [List]
+
+    @Query(filter: #Predicate<Project> { $0.isLoose },
+           sort: \Project.sortIndex)
+    private var looseProjects: [Project]
 
     var body: some View {
         NavigationStack {
@@ -31,21 +34,32 @@ struct ContainersView: View {
                         }
                     }
 
-                    section(title: "Spaces") {
-                        ForEach(spaces) { space in
-                            row(symbol: space.symbolName, title: space.name)
+                    if !looseLists.isEmpty {
+                        section(title: "Loose Lists") {
+                            ForEach(looseLists) { list in
+                                row(symbol: "list.bullet", title: list.title)
+                            }
                         }
                     }
 
-                    section(title: "Projects") {
-                        ForEach(projects) { project in
-                            row(symbol: "folder", title: project.title)
+                    if !looseProjects.isEmpty {
+                        section(title: "Loose Projects") {
+                            ForEach(looseProjects) { project in
+                                row(symbol: "folder", title: project.title)
+                            }
                         }
                     }
 
-                    section(title: "Lists") {
-                        ForEach(userLists) { list in
-                            row(symbol: "list.bullet", title: list.title)
+                    ForEach(spaces) { space in
+                        section(title: space.name) {
+                            ForEach(Containers.children(of: space)) { child in
+                                switch child {
+                                case .list(let list):
+                                    row(symbol: "list.bullet", title: list.title)
+                                case .project(let project):
+                                    row(symbol: "folder", title: project.title)
+                                }
+                            }
                         }
                     }
                 }
@@ -94,15 +108,18 @@ struct ContainersView: View {
     }
 
     private func addSpace() {
-        modelContext.insert(Space(name: "New Space"))
+        let index = Space.nextSortIndex(context: modelContext)
+        modelContext.insert(Space(name: "New Space", sortIndex: index))
     }
 
     private func addProject() {
-        modelContext.insert(Project(title: "New Project"))
+        let index = Containers.nextSortIndex(in: nil, context: modelContext)
+        modelContext.insert(Project(title: "New Project", sortIndex: index))
     }
 
     private func addList() {
-        modelContext.insert(List(title: "New List", kind: .user))
+        let index = Containers.nextSortIndex(in: nil, context: modelContext)
+        modelContext.insert(List(title: "New List", kind: .user, sortIndex: index))
     }
 }
 
