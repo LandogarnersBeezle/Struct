@@ -8,11 +8,24 @@
 import SwiftUI
 
 struct ContainerRowView: View {
+    
+    let symbol: String
+    let title: String
+    let sortIndex: Int
+    
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        HStack {
+            Image(systemName: symbol)
+                .frame(width: 24)
+            Text(title)
+                .font(Font.body.bold())
+            Text("\(String(describing: sortIndex))")
+            Spacer()
+        }
+        .padding(.vertical, 6)
     }
 }
 
 #Preview {
-    ContainerRowView()
+    ContainerRowView(symbol: "list.bullet", title: "Demo List", sortIndex: 0)
 }
