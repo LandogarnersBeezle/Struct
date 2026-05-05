@@ -9,20 +9,12 @@ import SwiftUI
 import SwiftData
 
 struct ContainersView: View {
-    @Environment(\.modelContext) private var modelContext
-
     @Query(filter: #Predicate<List> { $0.kindRaw == "inbox" })
     private var inboxLists: [List]
 
     @Query(sort: \Space.sortIndex) private var spaces: [Space]
 
-    @Query(filter: #Predicate<List> { $0.isLoose && $0.kindRaw != "inbox" },
-           sort: \List.sortIndex)
-    private var looseLists: [List]
-
-    @Query(filter: #Predicate<Project> { $0.isLoose },
-           sort: \Project.sortIndex)
-    private var looseProjects: [Project]
+    @State private var pendingCreate: CreateKind?
 
     var body: some View {
         NavigationStack {
@@ -31,22 +23,6 @@ struct ContainersView: View {
                     if let inbox = inboxLists.first {
                         section(title: "Inbox") {
                             row(symbol: "tray", title: inbox.title)
-                        }
-                    }
-
-                    if !looseLists.isEmpty {
-                        section(title: "Loose Lists") {
-                            ForEach(looseLists) { list in
-                                row(symbol: "list.bullet", title: list.title)
-                            }
-                        }
-                    }
-
-                    if !looseProjects.isEmpty {
-                        section(title: "Loose Projects") {
-                            ForEach(looseProjects) { project in
-                                row(symbol: "folder", title: project.title)
-                            }
                         }
                     }
 
@@ -69,14 +45,17 @@ struct ContainersView: View {
                 addMenu
                     .padding()
             }
+            .sheet(item: $pendingCreate) { kind in
+                CreateContainerView(kind: kind)
+            }
         }
     }
 
     private var addMenu: some View {
         Menu {
-            Button("New Space", systemImage: "square.grid.2x2", action: addSpace)
-            Button("New Project", systemImage: "folder", action: addProject)
-            Button("New List", systemImage: "list.bullet", action: addList)
+            Button("New Space", systemImage: "square.grid.2x2") { pendingCreate = .space }
+            Button("New Project", systemImage: "folder") { pendingCreate = .project }
+            Button("New List", systemImage: "list.bullet") { pendingCreate = .list }
         } label: {
             Image(systemName: "plus")
                 .font(.title2.weight(.semibold))
@@ -105,21 +84,6 @@ struct ContainersView: View {
             Spacer()
         }
         .padding(.vertical, 6)
-    }
-
-    private func addSpace() {
-        let index = Space.nextSortIndex(context: modelContext)
-        modelContext.insert(Space(name: "New Space", sortIndex: index))
-    }
-
-    private func addProject() {
-        let index = Containers.nextSortIndex(in: nil, context: modelContext)
-        modelContext.insert(Project(title: "New Project", sortIndex: index))
-    }
-
-    private func addList() {
-        let index = Containers.nextSortIndex(in: nil, context: modelContext)
-        modelContext.insert(List(title: "New List", kind: .user, sortIndex: index))
     }
 }
 

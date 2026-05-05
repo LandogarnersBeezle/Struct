@@ -20,13 +20,11 @@ final class List {
     var notes: String
     var kindRaw: String
     var sortIndex: Int
-    // Mirror of `space == nil`, kept in sync via `init` and `move(to:at:context:)`.
-    // Stored to keep `@Query` predicates straightforward (SwiftData predicates on
-    // optional to-one relationships are fragile).
-    var isLoose: Bool
     var createdAt: Date
     var updatedAt: Date
 
+    // Optional only to accommodate the system Inbox (`kind == .inbox`). Every
+    // user-created List must belong to a Space; enforced in `init` via assert.
     var space: Space?
 
     @Relationship(deleteRule: .cascade, inverse: \Item.list)
@@ -43,12 +41,12 @@ final class List {
          space: Space? = nil,
          sortIndex: Int = 0,
          slug: String = UUID().uuidString) {
+        assert(kind == .inbox || space != nil, "Non-inbox List must belong to a Space")
         self.slug = slug
         self.title = title
         self.notes = notes
         self.kindRaw = kind.rawValue
         self.sortIndex = sortIndex
-        self.isLoose = (space == nil)
         self.createdAt = .now
         self.updatedAt = .now
         self.space = space
@@ -79,11 +77,10 @@ extension List {
     }
 
     // Centralized re-parent / re-order entry point. Pass `index = nil` to append
-    // to the end of the destination scope (across both Lists and Projects).
-    func move(to space: Space?, at index: Int? = nil, context: ModelContext) {
-        let destination = index ?? Containers.nextSortIndex(in: space, context: context)
+    // to the end of the List ordering namespace within `space`.
+    func move(to space: Space, at index: Int? = nil, context: ModelContext) {
+        let destination = index ?? Containers.nextListSortIndex(in: space)
         self.space = space
-        self.isLoose = (space == nil)
         self.sortIndex = destination
         touch()
     }

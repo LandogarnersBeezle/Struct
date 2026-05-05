@@ -19,26 +19,23 @@ final class Project {
     }
     var completedAt: Date?
     var sortIndex: Int
-    // Mirror of `space == nil`; see `List.isLoose` for rationale.
-    var isLoose: Bool
     var createdAt: Date
     var updatedAt: Date
 
-    var space: Space?
+    var space: Space
 
     @Relationship(deleteRule: .cascade, inverse: \Item.project)
     var items: [Item] = []
 
     init(title: String,
          notes: String = "",
-         space: Space? = nil,
+         space: Space,
          sortIndex: Int = 0) {
         self.title = title
         self.notes = notes
         self.isCompleted = false
         self.completedAt = nil
         self.sortIndex = sortIndex
-        self.isLoose = (space == nil)
         self.createdAt = .now
         self.updatedAt = .now
         self.space = space
@@ -50,10 +47,9 @@ final class Project {
 }
 
 extension Project {
-    func move(to space: Space?, at index: Int? = nil, context: ModelContext) {
-        let destination = index ?? Containers.nextSortIndex(in: space, context: context)
+    func move(to space: Space, at index: Int? = nil, context: ModelContext) {
+        let destination = index ?? Containers.nextProjectSortIndex(in: space)
         self.space = space
-        self.isLoose = (space == nil)
         self.sortIndex = destination
         touch()
     }

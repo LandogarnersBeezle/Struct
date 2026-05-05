@@ -17,9 +17,16 @@ final class Space {
     var createdAt: Date
     var updatedAt: Date
 
-    @Relationship(deleteRule: .nullify, inverse: \Project.space)
+    // Cascade: `Project.space` is non-optional, so projects cannot outlive
+    // their Space.
+    @Relationship(deleteRule: .cascade, inverse: \Project.space)
     var projects: [Project] = []
 
+    // Nullify: `List.space` remains optional to accommodate the system Inbox,
+    // but user-created Lists are guaranteed to belong to a Space at creation
+    // time. On Space deletion, surviving lists become orphaned (which today
+    // means hidden from the UI); revisit if/when we re-introduce a loose
+    // scope.
     @Relationship(deleteRule: .nullify, inverse: \List.space)
     var lists: [List] = []
 
@@ -53,9 +60,9 @@ extension Space {
     }
 }
 
-// Type-erased child of a container scope (loose, or inside a Space). Lists and
-// Projects share a single ordering namespace per scope, so the UI merges them
-// by `sortIndex`.
+// Type-erased child of a Space. Lists and Projects each have their own
+// ordering namespace within the Space; the UI renders all Lists first
+// (sorted by `sortIndex`) followed by all Projects (sorted by `sortIndex`).
 enum ContainerChild: Identifiable {
     case list(List)
     case project(Project)
@@ -81,47 +88,32 @@ enum ContainerChild: Identifiable {
 }
 
 enum Containers {
-    // One past the current max `sortIndex` across both Lists and Projects in
-    // the given scope. Pass `space = nil` for the loose scope. The Inbox is
-    // excluded — it is rendered as its own section, not as a loose List.
-    static func nextSortIndex(in space: Space?, context: ModelContext) -> Int {
-        let listMax = maxListSortIndex(in: space, context: context)
-        let projectMax = maxProjectSortIndex(in: space, context: context)
-        return max(listMax, projectMax) + 1
+    // One past the current max `sortIndex` among Lists in `space` (Inbox
+    // excluded — it is rendered as its own section).
+    static func nextListSortIndex(in space: Space) -> Int {
+        let max = space.lists
+            .filter { $0.kind != .inbox }
+            .map(\.sortIndex)
+            .max() ?? -1
+        return max + 1
     }
 
-    // Lists + (non-inbox) ordered by `sortIndex` for rendering inside a Space.
+    // One past the current max `sortIndex` among Projects in `space`.
+    static func nextProjectSortIndex(in space: Space) -> Int {
+        (space.projects.map(\.sortIndex).max() ?? -1) + 1
+    }
+
+    // All Lists (sorted by `sortIndex`) followed by all Projects (sorted by
+    // `sortIndex`). The two types occupy separate ordering namespaces and are
+    // never interleaved.
     static func children(of space: Space) -> [ContainerChild] {
         let lists = space.lists
             .filter { $0.kind != .inbox }
+            .sorted { $0.sortIndex < $1.sortIndex }
             .map(ContainerChild.list)
-        let projects = space.projects.map(ContainerChild.project)
-        return (lists + projects).sorted { $0.sortIndex < $1.sortIndex }
-    }
-
-    private static func maxListSortIndex(in space: Space?, context: ModelContext) -> Int {
-        if let space {
-            return space.lists
-                .filter { $0.kind != .inbox }
-                .map(\.sortIndex)
-                .max() ?? -1
-        }
-        let inboxRaw = ListKind.inbox.rawValue
-        let descriptor = FetchDescriptor<List>(
-            predicate: #Predicate { $0.isLoose && $0.kindRaw != inboxRaw },
-            sortBy: [SortDescriptor(\.sortIndex, order: .reverse)]
-        )
-        return (try? context.fetch(descriptor).first?.sortIndex) ?? -1
-    }
-
-    private static func maxProjectSortIndex(in space: Space?, context: ModelContext) -> Int {
-        if let space {
-            return space.projects.map(\.sortIndex).max() ?? -1
-        }
-        let descriptor = FetchDescriptor<Project>(
-            predicate: #Predicate { $0.isLoose },
-            sortBy: [SortDescriptor(\.sortIndex, order: .reverse)]
-        )
-        return (try? context.fetch(descriptor).first?.sortIndex) ?? -1
+        let projects = space.projects
+            .sorted { $0.sortIndex < $1.sortIndex }
+            .map(ContainerChild.project)
+        return lists + projects
     }
 }
