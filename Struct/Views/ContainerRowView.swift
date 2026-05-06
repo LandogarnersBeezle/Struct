@@ -8,18 +8,21 @@
 import SwiftUI
 
 struct ContainerRowView: View {
-    
+
     let symbol: String
     let title: String
     let sortIndex: Int
-    
+
     var body: some View {
         HStack {
             Image(systemName: symbol)
                 .frame(width: 24)
             Text(title)
-                .font(Font.body.bold())
-            Text("\(String(describing: sortIndex))")
+                .font(.body.bold())
+                .lineLimit(1)
+            Text("\(sortIndex)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Spacer()
         }
         .padding(.vertical, 6)

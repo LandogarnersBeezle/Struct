@@ -1,5 +1,5 @@
 //
-//  ContentView.swift
+//  ContainersView.swift
 //  Struct
 //
 //  Created by Otto Kiefer on 01.05.2026.
@@ -8,65 +8,201 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - Layout state
+
+/// The three snap points for the split-screen layout.
+private enum LayoutState {
+    /// Sidebar fills 100 % of the screen; detail pane is hidden.
+    case full
+    /// Sidebar at 33 %, detail pane at 67 %.
+    case split
+    /// Detail pane fills 100 %; sidebar is hidden.
+    case detail
+
+    /// The fraction of total width the sidebar should occupy at this state.
+    var sidebarFraction: CGFloat {
+        switch self {
+        case .full:   1.0
+        case .split:  1.0 / 3.0
+        case .detail: 0.0
+        }
+    }
+}
+
+// MARK: - View
+
 struct ContainersView: View {
+
     @Query(filter: #Predicate<List> { $0.kindRaw == "inbox" })
     private var inboxLists: [List]
 
     @Query(sort: \Space.sortIndex) private var spaces: [Space]
 
+    // Split-screen state
+    @State private var layoutState: LayoutState = .full
+    @State private var selectedTarget: ContainerTarget?
+
+    // Sheet state
     @State private var pendingCreate: CreateKind?
 
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if let inbox = inboxLists.first {
-                        NavigationLink(value: ContainerTarget.list(inbox)) {
-                            ContainerRowView(symbol: "tray", title: inbox.title, sortIndex: 0)
-                        }
-                        .buttonStyle(.plain)
-                    }
+    /// Falls back to the system Inbox when nothing is explicitly selected.
+    private var effectiveTarget: ContainerTarget? {
+        selectedTarget ?? inboxLists.first.map { .list($0) }
+    }
 
-                    ForEach(spaces) { space in
-                        section(title: space.name, symbol: space.symbolName, target: .space(space)) {
-                            ForEach(Containers.children(of: space)) { child in
-                                switch child {
-                                case .list(let list):
-                                    NavigationLink(value: ContainerTarget.list(list)) {
-                                        ContainerRowView(symbol: "list.bullet", title: list.title, sortIndex: list.sortIndex)
-                                    }
-                                    .buttonStyle(.plain)
-                                case .project(let project):
-                                    NavigationLink(value: ContainerTarget.project(project)) {
-                                        ContainerRowView(symbol: "folder", title: project.title, sortIndex: project.sortIndex)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
+    // MARK: Body
+
+    var body: some View {
+        GeometryReader { geo in
+            let totalWidth   = geo.size.width
+            let sidebarWidth = totalWidth * layoutState.sidebarFraction
+            // In split view both panes are narrow, so cap Dynamic Type at .medium.
+            // In full or detail the full accessibility range is restored.
+            let typeRange: ClosedRange<DynamicTypeSize> = layoutState == .split
+                ? .xSmall ... .xSmall
+                : .xSmall ... .accessibility5
+
+            HStack(spacing: 0) {
+
+                // MARK: Sidebar pane
+                // Hidden in .detail state; slides out to the leading edge.
+                if layoutState != .detail {
+                    sidebarContent()
+                        .frame(width: sidebarWidth)
+                        .clipped()
+                        // Hairline separator while detail pane is visible
+                        .overlay(alignment: .trailing) {
+                            if layoutState == .split {
+                                Rectangle()
+                                    .fill(Color(UIColor.separator))
+                                    .frame(width: 0.5)
                             }
-                            .padding(.leading, 16)
+                        }
+                        .dynamicTypeSize(typeRange)
+                        .transition(.move(edge: .leading))
+                }
+
+                // MARK: Detail pane
+                // Hidden in .full state; slides in from the trailing edge.
+                if layoutState != .full, let target = effectiveTarget {
+                    NavigationStack {
+                        ContainerFocusView(target: target)
+                    }
+                    .frame(width: totalWidth - sidebarWidth)
+                    .dynamicTypeSize(typeRange)
+                    .transition(.move(edge: .trailing))
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            // Only observes gesture completion — no live tracking.
+            // Fires simultaneously with the ScrollView pan so vertical
+            // scrolling is never blocked.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 10, coordinateSpace: .local)
+                    .onEnded { value in
+                        // Must be a primarily horizontal movement …
+                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                        // … and either a deliberate drag or a fast flick.
+                        guard abs(value.translation.width) > 50
+                           || abs(value.velocity.width)    > 400 else { return }
+
+                        let sweepLeft = value.translation.width < 0
+                        let newState: LayoutState
+                        switch layoutState {
+                        case .full   where sweepLeft:  newState = .split
+                        case .split  where sweepLeft:  newState = .detail
+                        case .detail where !sweepLeft: newState = .split
+                        case .split  where !sweepLeft: newState = .full
+                        default: return   // already at a boundary, nothing to do
+                        }
+
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            layoutState = newState
                         }
                     }
+            )
+        }
+    }
+
+    // MARK: - Sidebar content
+
+    @ViewBuilder
+    private func sidebarContent() -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+
+                // Inbox row
+                if let inbox = inboxLists.first {
+                    Button { select(.list(inbox)) } label: {
+                        ContainerRowView(symbol: "tray", title: inbox.title, sortIndex: 0)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .padding()
+
+                // Space sections
+                ForEach(spaces) { space in
+                    spaceSection(space: space)
+                }
             }
-            .safeAreaInset(edge: .bottom) {
-                addMenu
-                    .padding()
+            .padding()
+        }
+        .background(Color(UIColor.systemGroupedBackground))
+        .safeAreaInset(edge: .bottom) { addMenu.padding() }
+        .sheet(item: $pendingCreate) { CreateContainerView(kind: $0) }
+    }
+
+    @ViewBuilder
+    private func spaceSection(space: Space) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Space header — tapping selects the space as the detail target
+            Button { select(.space(space)) } label: {
+                Label {
+                    Text(space.name).lineLimit(1)
+                } icon: {
+                    Image(systemName: space.symbolName).frame(width: 24)
+                }
+                .font(.headline)
             }
-            .sheet(item: $pendingCreate) { kind in
-                CreateContainerView(kind: kind)
+            .buttonStyle(.plain)
+
+            // Children (lists then projects)
+            ForEach(Containers.children(of: space)) { child in
+                switch child {
+                case .list(let list):
+                    Button { select(.list(list)) } label: {
+                        ContainerRowView(symbol: "list.bullet", title: list.title,
+                                         sortIndex: list.sortIndex)
+                    }
+                    .buttonStyle(.plain)
+                case .project(let project):
+                    Button { select(.project(project)) } label: {
+                        ContainerRowView(symbol: "folder", title: project.title,
+                                         sortIndex: project.sortIndex)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .navigationDestination(for: ContainerTarget.self) { target in
-                ContainerFocusView(target: target)
+            .padding(.leading, 16)
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Records the chosen target and opens the detail pane if in the full state.
+    private func select(_ target: ContainerTarget) {
+        selectedTarget = target
+        if layoutState == .full {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                layoutState = .split
             }
         }
     }
 
     private var addMenu: some View {
         Menu {
-            Button("New Space", systemImage: "square.grid.2x2") { pendingCreate = .space }
-            Button("New List", systemImage: "list.bullet") { pendingCreate = .list }
-            Button("New Project", systemImage: "folder") { pendingCreate = .project }
+            Button("New Space",   systemImage: "square.grid.2x2") { pendingCreate = .space }
+            Button("New List",    systemImage: "list.bullet")     { pendingCreate = .list }
+            Button("New Project", systemImage: "folder")          { pendingCreate = .project }
         } label: {
             Image(systemName: "plus")
                 .font(.title2.weight(.semibold))
@@ -74,26 +210,6 @@ struct ContainersView: View {
                 .background(.tint, in: Circle())
                 .foregroundStyle(.white)
                 .shadow(radius: 4, y: 2)
-        }
-    }
-
-    @ViewBuilder
-    private func section<Content: View>(title: String,
-                                        symbol: String,
-                                        target: ContainerTarget,
-                                        @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            NavigationLink(value: target) {
-                Label {
-                    Text(title)
-                } icon: {
-                    Image(systemName: symbol)
-                        .frame(width: 24)
-                }
-                .font(.headline)
-            }
-            .buttonStyle(.plain)
-            content()
         }
     }
 }
