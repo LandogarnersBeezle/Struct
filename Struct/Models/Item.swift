@@ -24,6 +24,9 @@ final class Item {
         }
     }
     var completedAt: Date?
+    /// When you plan to work on this item (scheduled date).
+    var doDate: Date?
+    /// Hard deadline — shown in red when overdue.
     var dueDate: Date?
     var sortIndex: Int
     var createdAt: Date
@@ -55,6 +58,7 @@ final class Item {
     // Prefer `Item.create(in:title:…)` for the fully wired flow.
     init(title: String,
          notes: String = "",
+         doDate: Date? = nil,
          dueDate: Date? = nil,
          sortIndex: Int = 0,
          parent: ItemParent? = nil) {
@@ -62,6 +66,7 @@ final class Item {
         self.notes = notes
         self.isCompleted = false
         self.completedAt = nil
+        self.doDate = doDate
         self.dueDate = dueDate
         self.sortIndex = sortIndex
         self.createdAt = .now
@@ -123,11 +128,13 @@ extension Item {
     static func create(in context: ModelContext,
                        title: String,
                        notes: String = "",
+                       doDate: Date? = nil,
                        dueDate: Date? = nil,
                        sortIndex: Int = 0,
                        parent: ItemParent? = nil) -> Item {
         let item = Item(title: title,
                         notes: notes,
+                        doDate: doDate,
                         dueDate: dueDate,
                         sortIndex: sortIndex,
                         parent: parent)

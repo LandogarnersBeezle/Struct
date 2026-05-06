@@ -27,5 +27,12 @@ struct ContainerRowView: View {
 }
 
 #Preview {
-    ContainerRowView(symbol: "list.bullet", title: "Demo List", sortIndex: 0)
+    VStack(spacing: 0) {
+        ContainerRowView(symbol: "tray",        title: "Inbox",           sortIndex: 0)
+        ContainerRowView(symbol: "list.bullet", title: "Groceries",       sortIndex: 0)
+        ContainerRowView(symbol: "list.bullet", title: "Books to Read",   sortIndex: 1)
+        ContainerRowView(symbol: "folder",      title: "Apartment Move",  sortIndex: 0)
+        ContainerRowView(symbol: "folder",      title: "Marathon Training", sortIndex: 1)
+    }
+    .padding(.horizontal)
 }
