@@ -67,19 +67,24 @@ struct ContainersView: View {
                 // MARK: Sidebar pane
                 // Hidden in .detail state; slides out to the leading edge.
                 if layoutState != .detail {
-                    sidebarContent()
-                        .frame(width: sidebarWidth)
-                        .clipped()
-                        // Hairline separator while detail pane is visible
-                        .overlay(alignment: .trailing) {
-                            if layoutState == .split {
-                                Rectangle()
-                                    .fill(Color(UIColor.separator))
-                                    .frame(width: 0.5)
-                            }
+                    ContainersSidebarView(
+                        inbox: inboxLists.first,
+                        spaces: spaces,
+                        onSelect: select,
+                        pendingCreate: $pendingCreate
+                    )
+                    .frame(width: sidebarWidth)
+                    .clipped()
+                    // Hairline separator while detail pane is visible
+                    .overlay(alignment: .trailing) {
+                        if layoutState == .split {
+                            Rectangle()
+                                .fill(Color(UIColor.separator))
+                                .frame(width: 0.5)
                         }
-                        .dynamicTypeSize(typeRange)
-                        .transition(.move(edge: .leading))
+                    }
+                    .dynamicTypeSize(typeRange)
+                    .transition(.move(edge: .leading))
                 }
 
                 // MARK: Detail pane
@@ -124,68 +129,6 @@ struct ContainersView: View {
         }
     }
 
-    // MARK: - Sidebar content
-
-    @ViewBuilder
-    private func sidebarContent() -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-
-                // Inbox row
-                if let inbox = inboxLists.first {
-                    Button { select(.list(inbox)) } label: {
-                        ContainerRowView(symbol: "tray", title: inbox.title, sortIndex: 0)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                // Space sections
-                ForEach(spaces) { space in
-                    spaceSection(space: space)
-                }
-            }
-            .padding(5)
-        }
-        .background(Color(UIColor.systemGroupedBackground))
-        .safeAreaInset(edge: .bottom) { addMenu.padding() }
-        .sheet(item: $pendingCreate) { CreateContainerView(kind: $0) }
-    }
-
-    @ViewBuilder
-    private func spaceSection(space: Space) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Space header — tapping selects the space as the detail target
-            Button { select(.space(space)) } label: {
-                Label {
-                    Text(space.name).lineLimit(1)
-                } icon: {
-                    Image(systemName: space.symbolName).frame(width: 24)
-                }
-                .font(.appHeadline)
-            }
-            .buttonStyle(.plain)
-
-            // Children (lists then projects)
-            ForEach(Containers.children(of: space)) { child in
-                switch child {
-                case .list(let list):
-                    Button { select(.list(list)) } label: {
-                        ContainerRowView(symbol: "list.bullet", title: list.title,
-                                         sortIndex: list.sortIndex)
-                    }
-                    .buttonStyle(.plain)
-                case .project(let project):
-                    Button { select(.project(project)) } label: {
-                        ContainerRowView(symbol: "folder", title: project.title,
-                                         sortIndex: project.sortIndex)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.leading, 8)
-        }
-    }
-
     // MARK: - Helpers
 
     /// Records the chosen target and opens the detail pane if in the full state.
@@ -198,20 +141,6 @@ struct ContainersView: View {
         }
     }
 
-    private var addMenu: some View {
-        Menu {
-            Button("New Space",   systemImage: "square.grid.2x2") { pendingCreate = .space }
-            Button("New List",    systemImage: "list.bullet")     { pendingCreate = .list }
-            Button("New Project", systemImage: "folder")          { pendingCreate = .project }
-        } label: {
-            Image(systemName: "plus")
-                .font(.appTitle2)
-                .frame(width: 56, height: 56)
-                .background(.tint, in: Circle())
-                .foregroundStyle(.white)
-                .shadow(radius: 4, y: 2)
-        }
-    }
 }
 
 #Preview {
