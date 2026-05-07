@@ -8,11 +8,18 @@
 import SwiftUI
 import SwiftData
 
+extension Font {
+
+    static let appFont = Font.custom("CossetteTexte-Regular", size: 16)
+    static let appHeadline = Font.custom("CossetteTexte-Bold", size: 16)
+
+}
+
 @main
 struct StructApp: App {
     let container: ModelContainer
 
-    init() {
+    init() {        
         do {
             container = try Self.makeContainer()
         } catch {
@@ -52,6 +59,7 @@ struct StructApp: App {
     var body: some Scene {
         WindowGroup {
             ContainersView()
+                .font(.appFont)
         }
         .modelContainer(container)
     }

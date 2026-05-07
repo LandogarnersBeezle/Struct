@@ -144,7 +144,7 @@ struct ContainersView: View {
                     spaceSection(space: space)
                 }
             }
-            .padding()
+            .padding(5)
         }
         .background(Color(UIColor.systemGroupedBackground))
         .safeAreaInset(edge: .bottom) { addMenu.padding() }
@@ -161,7 +161,7 @@ struct ContainersView: View {
                 } icon: {
                     Image(systemName: space.symbolName).frame(width: 24)
                 }
-                .font(.headline)
+                .font(.appHeadline)
             }
             .buttonStyle(.plain)
 
@@ -182,7 +182,7 @@ struct ContainersView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.leading, 16)
+            .padding(.leading, 8)
         }
     }
 

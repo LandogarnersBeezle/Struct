@@ -17,7 +17,7 @@ struct ItemRowView: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 4) {
             // Completion indicator
             Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
                 .font(.title3)
@@ -27,7 +27,7 @@ struct ItemRowView: View {
             VStack(alignment: .leading, spacing: 5) {
                 // Title
                 Text(item.title)
-                    .font(.body.weight(.medium))
+                    .font(.appFont)
                     .strikethrough(item.isCompleted)
                     .foregroundStyle(item.isCompleted ? .secondary : .primary)
 
@@ -36,7 +36,7 @@ struct ItemRowView: View {
                     Text(item.notes)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
 
                 // Date chips

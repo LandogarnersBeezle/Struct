@@ -18,14 +18,14 @@ struct ContainerRowView: View {
             Image(systemName: symbol)
                 .frame(width: 24)
             Text(title)
-                .font(.body.bold())
+                .font(.appFont.weight(.regular))
                 .lineLimit(1)
             Text("\(sortIndex)")
-                .font(.caption)
+                .font(.appFont.weight(.light))
                 .foregroundStyle(.secondary)
             Spacer()
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 3)
     }
 }
 
