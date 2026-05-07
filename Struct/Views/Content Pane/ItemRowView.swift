@@ -20,7 +20,7 @@ struct ItemRowView: View {
         HStack(alignment: .top, spacing: 4) {
             // Completion indicator
             Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
-                .font(.title3)
+                .font(.appTitle3)
                 .foregroundStyle(item.isCompleted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                 .padding(.top, 1)
 
@@ -34,7 +34,7 @@ struct ItemRowView: View {
                 // Notes
                 if !item.notes.isEmpty {
                     Text(item.notes)
-                        .font(.subheadline)
+                        .font(.appSubheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -48,7 +48,7 @@ struct ItemRowView: View {
                             } icon: {
                                 Image(systemName: "calendar")
                             }
-                            .font(.caption)
+                            .font(.appCaption)
                             .foregroundStyle(.secondary)
                         }
                         if let dueDate = item.dueDate {
@@ -57,7 +57,7 @@ struct ItemRowView: View {
                             } icon: {
                                 Image(systemName: "flag.fill")
                             }
-                            .font(.caption)
+                            .font(.appCaption)
                             .foregroundStyle(isOverdue ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
                         }
                     }

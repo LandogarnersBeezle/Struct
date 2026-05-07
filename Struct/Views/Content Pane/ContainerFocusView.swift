@@ -57,6 +57,15 @@ struct ContainerFocusView: View {
                     description: Text("Items added to this container will appear here.")
                 )
             } else {
+                HStack(alignment: .top) {
+                    Image(systemName: target.symbol)
+                        .font(.appFont)
+                        .padding(.top, 2)
+                    Text(target.title)
+                        .font(.appFont)
+                    Spacer()
+                }
+                .padding(.horizontal, 15)
                 ScrollView {
                     LazyVStack(spacing: 10) {
                         ForEach(target.items) { item in
@@ -67,8 +76,8 @@ struct ContainerFocusView: View {
                 }
             }
         }
-        .navigationTitle(target.title)
-        .navigationBarTitleDisplayMode(.inline)
+//        .navigationTitle(target.title)
+//        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -82,7 +91,7 @@ struct ContainerFocusView: View {
 
     let space = Space(name: "Personal", sortIndex: 0)
     context.insert(space)
-    let apartment = List(title: "Apartment Move", space: space, sortIndex: 0)
+    let apartment = List(title: "Meetings with a lot of attendees that have a lot of work to do", space: space, sortIndex: 0)
     context.insert(apartment)
 
     Item.create(in: context, title: "Book moving truck",
