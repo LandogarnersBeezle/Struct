@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
 
 enum ListKind: String, Codable {
     case user
@@ -15,6 +16,8 @@ enum ListKind: String, Codable {
 
 @Model
 final class List {
+    /// The canonical tint colour for List containers throughout the app.
+    static let containerColor: Color = .cyan
     @Attribute(.unique) var slug: String
     var title: String
     var notes: String

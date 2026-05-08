@@ -12,10 +12,12 @@ struct ContainerRowView: View {
     let symbol: String
     let title: String
     let sortIndex: Int
+    var color: Color = .primary
 
     var body: some View {
         HStack {
             Image(systemName: symbol)
+                .foregroundStyle(color)
                 .frame(width: 24)
             Text(title)
                 .font(.appFont.weight(.regular))

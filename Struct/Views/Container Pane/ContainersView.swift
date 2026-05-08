@@ -8,27 +8,6 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Layout state
-
-/// The three snap points for the split-screen layout.
-private enum LayoutState {
-    /// Sidebar fills 100 % of the screen; detail pane is hidden.
-    case full
-    /// Sidebar at 33 %, detail pane at 67 %.
-    case split
-    /// Detail pane fills 100 %; sidebar is hidden.
-    case detail
-
-    /// The fraction of total width the sidebar should occupy at this state.
-    var sidebarFraction: CGFloat {
-        switch self {
-        case .full:   1.0
-        case .split:  1.0 / 3.0
-        case .detail: 0.0
-        }
-    }
-}
-
 // MARK: - View
 
 struct ContainersView: View {
@@ -38,105 +17,23 @@ struct ContainersView: View {
 
     @Query(sort: \Space.sortIndex) private var spaces: [Space]
 
-    // Split-screen state
-    @State private var layoutState: LayoutState = .full
-    @State private var selectedTarget: ContainerTarget?
-
-    // Sheet state
+    @State private var navigationPath: [ContainerTarget] = []
     @State private var pendingCreate: CreateKind?
-
-    /// Falls back to the system Inbox when nothing is explicitly selected.
-    private var effectiveTarget: ContainerTarget? {
-        selectedTarget ?? inboxLists.first.map { .list($0) }
-    }
 
     // MARK: Body
 
     var body: some View {
-        GeometryReader { geo in
-            let totalWidth   = geo.size.width
-            let sidebarWidth = totalWidth * layoutState.sidebarFraction
-            // In split view both panes are narrow, so cap Dynamic Type at .medium.
-            // In full or detail the full accessibility range is restored.
-            let typeRange: ClosedRange<DynamicTypeSize> = layoutState == .split
-                ? .xSmall ... .xSmall
-                : .xSmall ... .accessibility5
-
-            HStack(spacing: 0) {
-
-                // MARK: Sidebar pane
-                // Hidden in .detail state; slides out to the leading edge.
-                if layoutState != .detail {
-                    ContainersSidebarView(
-                        inbox: inboxLists.first,
-                        spaces: spaces,
-                        onSelect: select,
-                        pendingCreate: $pendingCreate
-                    )
-                    .frame(width: sidebarWidth)
-                    .clipped()
-                    // Hairline separator while detail pane is visible
-                    .overlay(alignment: .trailing) {
-                        if layoutState == .split {
-                            Rectangle()
-                                .fill(Color(UIColor.separator))
-                                .frame(width: 0.5)
-                        }
-                    }
-                    .dynamicTypeSize(typeRange)
-                    .transition(.move(edge: .leading))
-                }
-
-                // MARK: Detail pane
-                // Hidden in .full state; slides in from the trailing edge.
-                if layoutState != .full, let target = effectiveTarget {
-                    NavigationStack {
-                        ContainerFocusView(target: target)
-                    }
-                    .frame(width: totalWidth - sidebarWidth)
-                    .dynamicTypeSize(typeRange)
-                    .transition(.move(edge: .trailing))
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            // Only observes gesture completion — no live tracking.
-            // Fires simultaneously with the ScrollView pan so vertical
-            // scrolling is never blocked.
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 10, coordinateSpace: .local)
-                    .onEnded { value in
-                        // Must be a primarily horizontal movement …
-                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                        // … and either a deliberate drag or a fast flick.
-                        guard abs(value.translation.width) > 50
-                           || abs(value.velocity.width)    > 400 else { return }
-
-                        let sweepLeft = value.translation.width < 0
-                        let newState: LayoutState
-                        switch layoutState {
-                        case .full   where sweepLeft:  newState = .split
-                        case .split  where sweepLeft:  newState = .detail
-                        case .detail where !sweepLeft: newState = .split
-                        case .split  where !sweepLeft: newState = .full
-                        default: return   // already at a boundary, nothing to do
-                        }
-
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            layoutState = newState
-                        }
-                    }
+        NavigationStack(path: $navigationPath) {
+            ContainersSidebarView(
+                inbox: inboxLists.first,
+                spaces: spaces,
+                onSelect: { navigationPath = [$0] },
+                pendingCreate: $pendingCreate
             )
-        }
-    }
-
-    // MARK: - Helpers
-
-    /// Records the chosen target and opens the detail pane if in the full state.
-    private func select(_ target: ContainerTarget) {
-        selectedTarget = target
-        if layoutState == .full {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                layoutState = .split
+            .navigationDestination(for: ContainerTarget.self) { target in
+                ContainerFocusView(target: target) { newTarget in
+                    navigationPath = [newTarget]
+                }
             }
         }
     }

@@ -7,9 +7,12 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
 
 @Model
 final class Project {
+    /// The canonical tint colour for Project containers throughout the app.
+    static let containerColor: Color = .purple
     var title: String
     var notes: String
     var isCompleted: Bool {

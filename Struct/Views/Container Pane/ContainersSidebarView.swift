@@ -36,7 +36,8 @@ struct ContainersSidebarView: View {
                 // Inbox row
                 if let inbox {
                     Button { onSelect(.list(inbox)) } label: {
-                        ContainerRowView(symbol: "tray", title: inbox.title, sortIndex: 0)
+                        ContainerRowView(symbol: "tray", title: inbox.title, sortIndex: 0,
+                                         color: List.containerColor)
                     }
                     .buttonStyle(.plain)
                 }
@@ -63,7 +64,9 @@ struct ContainersSidebarView: View {
                 Label {
                     Text(space.name).lineLimit(1)
                 } icon: {
-                    Image(systemName: space.symbolName).frame(width: 24)
+                    Image(systemName: space.symbolName)
+                        .foregroundStyle(Space.containerColor)
+                        .frame(width: 24)
                 }
                 .font(.appHeadline)
             }
@@ -75,13 +78,13 @@ struct ContainersSidebarView: View {
                 case .list(let list):
                     Button { onSelect(.list(list)) } label: {
                         ContainerRowView(symbol: "list.bullet", title: list.title,
-                                         sortIndex: list.sortIndex)
+                                         sortIndex: list.sortIndex, color: List.containerColor)
                     }
                     .buttonStyle(.plain)
                 case .project(let project):
                     Button { onSelect(.project(project)) } label: {
                         ContainerRowView(symbol: "folder", title: project.title,
-                                         sortIndex: project.sortIndex)
+                                         sortIndex: project.sortIndex, color: Project.containerColor)
                     }
                     .buttonStyle(.plain)
                 }

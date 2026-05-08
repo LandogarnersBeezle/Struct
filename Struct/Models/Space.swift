@@ -7,9 +7,12 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
 
 @Model
 final class Space {
+    /// The canonical tint colour for Space containers throughout the app.
+    static let containerColor: Color = .blue
     var name: String
     var symbolName: String
     var colorHex: String?
