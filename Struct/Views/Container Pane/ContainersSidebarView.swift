@@ -32,7 +32,8 @@ struct ContainersSidebarView: View {
         // Inbox row
         if let inbox {
             Button { onSelect(.list(inbox)) } label: {
-                ContainerRowView(symbol: "tray", title: inbox.title, sortIndex: 0,
+                ContainerRowView(symbol: "tray", title: inbox.title,
+                                 openTaskCount: inbox.items.filter { !$0.isCompleted }.count,
                                  color: List.containerColor)
             }
             .buttonStyle(.plain)

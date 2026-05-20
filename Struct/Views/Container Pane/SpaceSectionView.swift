@@ -45,14 +45,21 @@ struct SpaceSectionView: View {
         VStack(alignment: .leading, spacing: 8) {
             // Space header — tapping selects the space as the detail target
             Button { onSelect(.space(space)) } label: {
-                Label {
-                    Text(space.name).lineLimit(1)
-                } icon: {
+                HStack {
                     Image(systemName: space.symbolName)
                         .foregroundStyle(Space.containerColor)
                         .frame(width: 24)
+                    Text(space.name)
+                        .lineLimit(1)
+                        .font(.appHeadline)
+                    Spacer()
+                    let openCount = space.items.filter { !$0.isCompleted }.count
+                    if openCount > 0 {
+                        Text("\(openCount)")
+                            .font(.appFont.weight(.light))
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .font(.appHeadline)
             }
             .buttonStyle(.plain)
 
@@ -60,7 +67,8 @@ struct SpaceSectionView: View {
             ForEach(lists) { list in
                 Button { onSelect(.list(list)) } label: {
                     ContainerRowView(symbol: "list.bullet", title: list.title,
-                                     sortIndex: list.sortIndex, color: List.containerColor)
+                                     openTaskCount: list.items.filter { !$0.isCompleted }.count,
+                                     color: List.containerColor)
                 }
                 .buttonStyle(.plain)
             }
@@ -70,7 +78,8 @@ struct SpaceSectionView: View {
             ForEach(projects) { project in
                 Button { onSelect(.project(project)) } label: {
                     ContainerRowView(symbol: "folder", title: project.title,
-                                     sortIndex: project.sortIndex, color: Project.containerColor)
+                                     openTaskCount: project.items.filter { !$0.isCompleted }.count,
+                                     color: Project.containerColor)
                 }
                 .buttonStyle(.plain)
             }

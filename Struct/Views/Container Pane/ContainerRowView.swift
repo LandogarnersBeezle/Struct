@@ -11,7 +11,7 @@ struct ContainerRowView: View {
 
     let symbol: String
     let title: String
-    let sortIndex: Int
+    let openTaskCount: Int
     var color: Color = .primary
 
     var body: some View {
@@ -22,10 +22,12 @@ struct ContainerRowView: View {
             Text(title)
                 .font(.appFont.weight(.regular))
                 .lineLimit(1)
-            Text("\(sortIndex)")
-                .font(.appFont.weight(.light))
-                .foregroundStyle(.secondary)
             Spacer()
+            if openTaskCount > 0 {
+                Text("\(openTaskCount)")
+                    .font(.appFont.weight(.light))
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.vertical, 3)
     }
@@ -33,11 +35,11 @@ struct ContainerRowView: View {
 
 #Preview {
     VStack(spacing: 0) {
-        ContainerRowView(symbol: "tray",        title: "Inbox",           sortIndex: 0)
-        ContainerRowView(symbol: "list.bullet", title: "Groceries",       sortIndex: 0)
-        ContainerRowView(symbol: "list.bullet", title: "Books to Read",   sortIndex: 1)
-        ContainerRowView(symbol: "folder",      title: "Apartment Move",  sortIndex: 0)
-        ContainerRowView(symbol: "folder",      title: "Marathon Training", sortIndex: 1)
+        ContainerRowView(symbol: "tray",        title: "Inbox",             openTaskCount: 3)
+        ContainerRowView(symbol: "list.bullet", title: "Groceries",         openTaskCount: 4)
+        ContainerRowView(symbol: "list.bullet", title: "Books to Read",     openTaskCount: 0)
+        ContainerRowView(symbol: "folder",      title: "Apartment Move",    openTaskCount: 3)
+        ContainerRowView(symbol: "folder",      title: "Marathon Training",  openTaskCount: 2)
     }
     .padding(.horizontal)
 }
