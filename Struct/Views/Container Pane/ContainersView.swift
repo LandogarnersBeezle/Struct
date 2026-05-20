@@ -8,8 +8,19 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - View
+// MARK: - ContainersView
 
+/// Navigation host and data coordinator for the container pane.
+///
+/// Responsibilities:
+///  - Fetches the inbox list and the ordered space list via `@Query`.
+///  - Owns `navigationPath` and `pendingCreate` — the two pieces of navigation
+///    state shared between the sidebar and the detail pane.
+///  - Sets up the `NavigationStack` and wires `ContainersSidebarView` to
+///    `ContainerFocusView` via `navigationDestination`.
+///
+/// Layout and per-space data are delegated to `ContainersSidebarView` and
+/// `SpaceSectionView` respectively.
 struct ContainersView: View {
 
     @Query(filter: #Predicate<List> { $0.kindRaw == "inbox" })
