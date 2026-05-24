@@ -51,12 +51,10 @@ struct SpaceSectionView: View {
                         .frame(width: 24)
                     Text(space.name)
                         .lineLimit(1)
-                        .font(.appHeadline)
                     Spacer()
                     let openCount = space.items.filter { !$0.isCompleted }.count
                     if openCount > 0 {
                         Text("\(openCount)")
-                            .font(.appFont.weight(.light))
                             .foregroundStyle(.secondary)
                     }
                 }

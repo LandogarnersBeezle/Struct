@@ -20,12 +20,10 @@ struct ContainerRowView: View {
                 .foregroundStyle(color)
                 .frame(width: 24)
             Text(title)
-                .font(.appFont.weight(.regular))
                 .lineLimit(1)
             Spacer()
             if openTaskCount > 0 {
                 Text("\(openTaskCount)")
-                    .font(.appFont.weight(.light))
                     .foregroundStyle(.secondary)
             }
         }

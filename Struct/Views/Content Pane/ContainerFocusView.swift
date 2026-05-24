@@ -106,16 +106,13 @@ struct ContainerFocusView: View {
             HStack(spacing: 8) {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
-                        .font(.appHeadline)
                 }
 
                 // Search bar
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
-                        .font(.appSubheadline)
                         .foregroundStyle(.secondary)
                     TextField("Search", text: $searchText)
-                        .font(.appFont)
                         .focused($isSearchFocused)
                         .submitLabel(.done)
                         .onSubmit { isSearchFocused = false }
@@ -134,7 +131,6 @@ struct ContainerFocusView: View {
                 // Menu button — placeholder, no functionality yet
                 Button { } label: {
                     Image(systemName: "ellipsis")
-                        .font(.appHeadline)
                 }
             }
             .padding(.horizontal)
@@ -150,7 +146,6 @@ struct ContainerFocusView: View {
                     .truncationMode(.tail)
                 Spacer()
             }
-            .font(.appHeadline)
             .padding(.horizontal)
             .padding(.bottom, 12)
 
@@ -192,7 +187,6 @@ struct ContainerFocusView: View {
                                                 .frame(width: 20)
                                                 .foregroundStyle(entry.target.color)
                                             Text(entry.target.title)
-                                                .font(.appFont)
                                                 .lineLimit(1)
                                             Spacer()
                                         }

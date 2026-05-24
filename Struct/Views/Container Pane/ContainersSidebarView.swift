@@ -64,7 +64,6 @@ struct ContainersSidebarView: View {
             Button("New Project", systemImage: "folder")          { pendingCreate = .project }
         } label: {
             Image(systemName: "plus")
-                .font(.appTitle2)
                 .frame(width: 56, height: 56)
                 .background(.tint, in: Circle())
                 .foregroundStyle(.white)
