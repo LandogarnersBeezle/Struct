@@ -36,23 +36,66 @@ struct ContainersSidebarView: View {
                                  openTaskCount: inbox.items.filter { !$0.isCompleted }.count,
                                  color: List.containerColor)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ContainerRowButtonStyle())
             .padding(5)
         }
 
         // Space sections — each SpaceSectionView owns its own @Query so
         // new lists and projects appear immediately after creation.
+        // LazyVStack with pinnedViews keeps each space header visible while
+        // its children scroll underneath it.
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                 ForEach(spaces) { space in
-                    SpaceSectionView(space: space, onSelect: onSelect)
+                    Section {
+                        SpaceSectionView(space: space, onSelect: onSelect)
+                            .padding(.horizontal, 5)
+                            .padding(.bottom, 8)
+                    } header: {
+                        spaceHeader(for: space)
+                    }
                 }
             }
-            .padding(5)
         }
 //        .background(Color(UIColor.systemGroupedBackground))
         .safeAreaInset(edge: .bottom) { addMenu.padding() }
         .sheet(item: $pendingCreate) { CreateContainerView(kind: $0) }
+    }
+
+    // MARK: - Space header (used as sticky section header)
+
+    private func spaceHeader(for space: Space) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider()
+            Button { onSelect(.space(space)) } label: {
+                HStack {
+                    Image(systemName: space.symbolName)
+                        .foregroundStyle(Space.containerColor)
+                        .frame(width: 24)
+                    Text(space.name)
+                        .lineLimit(1)
+                    Spacer()
+                    let openCount = space.items.filter { !$0.isCompleted }.count
+                    if openCount > 0 {
+                        Text("\(openCount)")
+                            .foregroundStyle(.secondary)
+                            .padding(5)
+                            .background {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.secondary.opacity(0.1))
+                            }
+                            .padding(.trailing, 5)
+                    }
+                }
+                .padding(.horizontal, 5)
+                .padding(.vertical, 4)
+                .padding(.bottom, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(ContainerRowButtonStyle())
+        }
+        // Solid background so content scrolling behind doesn't show through.
+        .background(.background)
     }
 
     // MARK: - Add menu

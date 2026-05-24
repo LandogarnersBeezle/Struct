@@ -205,6 +205,26 @@ struct ContainerFocusView: View {
                     .background(Color(UIColor.systemBackground))
                 }
             }
+            // Swipe from the left edge to go back (mirrors the back button).
+            // Attaching to the ZStack (content area only) means the overlay strip
+            // sits above the ScrollView — so it wins the gesture against UIScrollView's
+            // pan recogniser — while leaving the header row (back button, search bar)
+            // completely uncovered.
+            .overlay(alignment: .leading) {
+                Color.clear
+                    .frame(width: 30)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 20)
+                            .onEnded { value in
+                                let isRightwardSwipe = value.translation.width > 80
+                                let isMoreHorizontal = abs(value.translation.width) > abs(value.translation.height)
+                                if isRightwardSwipe && isMoreHorizontal {
+                                    dismiss()
+                                }
+                            }
+                    )
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         // Dismiss search when tapping outside the search bar

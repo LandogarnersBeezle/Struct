@@ -16,13 +16,13 @@ import SwiftData
 /// this view directly whenever a child is inserted or removed — no
 /// relationship-traversal lag, no need to navigate away and back.
 struct SpaceSectionView: View {
-
+    
     let space: Space
     let onSelect: (ContainerTarget) -> Void
-
+    
     @Query private var lists: [List]
     @Query private var projects: [Project]
-
+    
     init(space: Space, onSelect: @escaping (ContainerTarget) -> Void) {
         self.space = space
         self.onSelect = onSelect
@@ -40,27 +40,9 @@ struct SpaceSectionView: View {
             sort: \.sortIndex
         )
     }
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Space header — tapping selects the space as the detail target
-            Button { onSelect(.space(space)) } label: {
-                HStack {
-                    Image(systemName: space.symbolName)
-                        .foregroundStyle(Space.containerColor)
-                        .frame(width: 24)
-                    Text(space.name)
-                        .lineLimit(1)
-                    Spacer()
-                    let openCount = space.items.filter { !$0.isCompleted }.count
-                    if openCount > 0 {
-                        Text("\(openCount)")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-
             // Lists
             ForEach(lists) { list in
                 Button { onSelect(.list(list)) } label: {
@@ -68,7 +50,7 @@ struct SpaceSectionView: View {
                                      openTaskCount: list.items.filter { !$0.isCompleted }.count,
                                      color: List.containerColor)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ContainerRowButtonStyle())
             }
             .padding(.leading, 8)
 
@@ -79,7 +61,7 @@ struct SpaceSectionView: View {
                                      openTaskCount: project.items.filter { !$0.isCompleted }.count,
                                      color: Project.containerColor)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ContainerRowButtonStyle())
             }
             .padding(.leading, 8)
         }

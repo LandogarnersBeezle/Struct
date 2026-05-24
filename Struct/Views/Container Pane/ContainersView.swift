@@ -38,9 +38,14 @@ struct ContainersView: View {
             ContainersSidebarView(
                 inbox: inboxLists.first,
                 spaces: spaces,
-                onSelect: { navigationPath = [$0] },
+                onSelect: { target in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        navigationPath = [target]
+                    }
+                },
                 pendingCreate: $pendingCreate
             )
+            .padding(.horizontal)
             .navigationDestination(for: ContainerTarget.self) { target in
                 ContainerFocusView(target: target) { newTarget in
                     navigationPath = [newTarget]
