@@ -28,6 +28,8 @@ struct ContainersView: View {
 
     @Query(sort: \Space.sortIndex) private var spaces: [Space]
 
+    @Environment(\.modelContext) private var modelContext
+
     @State private var navigationPath: [ContainerTarget] = []
     @State private var pendingCreate: CreateKind?
 
@@ -51,6 +53,15 @@ struct ContainersView: View {
                     navigationPath = [newTarget]
                 }
             }
+        }
+        // Migrate any space whose lists and projects still use separate
+        // sortIndex namespaces into the unified single namespace.
+        // Idempotent — safe to run on every launch.
+        .onAppear {
+            for space in spaces {
+                Containers.ensureUnifiedSortOrder(for: space)
+            }
+            try? modelContext.save()
         }
     }
 

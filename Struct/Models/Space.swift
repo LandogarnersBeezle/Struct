@@ -63,9 +63,9 @@ extension Space {
     }
 }
 
-// Type-erased child of a Space. Lists and Projects each have their own
-// ordering namespace within the Space; the UI renders all Lists first
-// (sorted by `sortIndex`) followed by all Projects (sorted by `sortIndex`).
+// Type-erased child of a Space. After the unified-sortIndex migration both
+// Lists and Projects share a single ordering namespace per Space; the UI
+// sorts them together by `sortIndex` and may freely interleave them.
 enum ContainerChild: Identifiable {
     case list(List)
     case project(Project)
@@ -77,46 +77,125 @@ enum ContainerChild: Identifiable {
 
     var id: ID {
         switch self {
-        case .list(let l): return .list(l.persistentModelID)
+        case .list(let l):    return .list(l.persistentModelID)
         case .project(let p): return .project(p.persistentModelID)
         }
     }
 
     var sortIndex: Int {
         switch self {
-        case .list(let l): return l.sortIndex
+        case .list(let l):    return l.sortIndex
         case .project(let p): return p.sortIndex
         }
     }
 }
 
+// MARK: - ContainerChild display helpers
+
+extension ContainerChild {
+
+    var symbol: String {
+        switch self {
+        case .list:    "list.bullet"
+        case .project: "folder"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .list(let l):    l.title
+        case .project(let p): p.title
+        }
+    }
+
+    var openTaskCount: Int {
+        switch self {
+        case .list(let l):    l.items.filter { !$0.isCompleted }.count
+        case .project(let p): p.items.filter { !$0.isCompleted }.count
+        }
+    }
+
+    var containerColor: Color {
+        switch self {
+        case .list:    List.containerColor
+        case .project: Project.containerColor
+        }
+    }
+
+    /// Navigation target for this child.
+    var target: ContainerTarget {
+        switch self {
+        case .list(let l):    .list(l)
+        case .project(let p): .project(p)
+        }
+    }
+}
+
 enum Containers {
-    // One past the current max `sortIndex` among Lists in `space` (Inbox
-    // excluded — it is rendered as its own section).
-    static func nextListSortIndex(in space: Space) -> Int {
-        let max = space.lists
-            .filter { $0.kind != .inbox }
-            .map(\.sortIndex)
-            .max() ?? -1
-        return max + 1
+
+    // MARK: Sort index helpers
+
+    /// Next available sort index in the unified namespace for a new child of
+    /// `space`. Lists and Projects share the same integer sequence.
+    static func nextSortIndex(in space: Space) -> Int {
+        let all = space.lists.filter { $0.kind != .inbox }.map(\.sortIndex)
+                + space.projects.map(\.sortIndex)
+        return (all.max() ?? -1) + 1
     }
 
-    // One past the current max `sortIndex` among Projects in `space`.
-    static func nextProjectSortIndex(in space: Space) -> Int {
-        (space.projects.map(\.sortIndex).max() ?? -1) + 1
-    }
+    /// Alias kept for `CreateContainerView` call sites.
+    static func nextListSortIndex(in space: Space) -> Int { nextSortIndex(in: space) }
 
-    // All Lists (sorted by `sortIndex`) followed by all Projects (sorted by
-    // `sortIndex`). The two types occupy separate ordering namespaces and are
-    // never interleaved.
+    /// Alias kept for `CreateContainerView` call sites.
+    static func nextProjectSortIndex(in space: Space) -> Int { nextSortIndex(in: space) }
+
+    // MARK: Children
+
+    /// All non-inbox children of `space`, sorted by their unified `sortIndex`.
     static func children(of space: Space) -> [ContainerChild] {
-        let lists = space.lists
-            .filter { $0.kind != .inbox }
-            .sorted { $0.sortIndex < $1.sortIndex }
-            .map(ContainerChild.list)
-        let projects = space.projects
-            .sorted { $0.sortIndex < $1.sortIndex }
-            .map(ContainerChild.project)
-        return lists + projects
+        let lists    = space.lists.filter { $0.kind != .inbox }.map(ContainerChild.list)
+        let projects = space.projects.map(ContainerChild.project)
+        return (lists + projects).sorted { $0.sortIndex < $1.sortIndex }
+    }
+
+    // MARK: Repack
+
+    /// Normalises `sortIndex` to contiguous 0-based integers in the order
+    /// the children are supplied.  Call this after every drop commit and
+    /// after `ensureUnifiedSortOrder`.
+    static func repack(_ children: [ContainerChild]) {
+        for (i, child) in children.enumerated() {
+            switch child {
+            case .list(let l):    l.sortIndex = i
+            case .project(let p): p.sortIndex = i
+            }
+        }
+    }
+
+    // MARK: Migration
+
+    /// Migrates a space whose lists and projects still occupy separate
+    /// `sortIndex` namespaces (pre-unification) into the single unified
+    /// namespace.
+    ///
+    /// Canonical order after migration: lists (original relative order)
+    /// followed by projects (original relative order), matching the previous
+    /// visual layout.  The function is idempotent — a space that is already
+    /// correctly packed is left unchanged.
+    static func ensureUnifiedSortOrder(for space: Space) {
+        let lists    = space.lists.filter { $0.kind != .inbox }.sorted { $0.sortIndex < $1.sortIndex }
+        let projects = space.projects.sorted { $0.sortIndex < $1.sortIndex }
+
+        // Check if already packed in the unified namespace
+        var expected = 0
+        var needsMigration = false
+        for l in lists    { if l.sortIndex != expected { needsMigration = true; break }; expected += 1 }
+        if !needsMigration {
+            for p in projects { if p.sortIndex != expected { needsMigration = true; break }; expected += 1 }
+        }
+        guard needsMigration else { return }
+
+        for (i, l) in lists.enumerated()    { l.sortIndex = i }
+        for (i, p) in projects.enumerated() { p.sortIndex = lists.count + i }
     }
 }

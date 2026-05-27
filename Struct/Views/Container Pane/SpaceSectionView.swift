@@ -8,24 +8,68 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - SlotItem
+
+/// One element in a space's display list during a drag: either a real child
+/// row or the animated drop-zone gap.
+private enum SlotItem: Identifiable {
+    case child(ContainerChild)
+    case gap
+
+    var id: AnyHashable {
+        switch self {
+        case .child(let c): AnyHashable(c.id)
+        case .gap:          AnyHashable("gap")
+        }
+    }
+}
+
+extension SlotItem: Equatable {
+    static func == (lhs: SlotItem, rhs: SlotItem) -> Bool { lhs.id == rhs.id }
+}
+
+// MARK: - DropGapView
+
+/// Dashed-outline placeholder that shows where the dragged card will land.
+private struct DropGapView: View {
+    let height: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .strokeBorder(
+                Color.accentColor.opacity(0.55),
+                style: StrokeStyle(lineWidth: 1.5, dash: [6, 3])
+            )
+            .frame(height: max(height, 28))
+            .padding(.horizontal, 4)
+    }
+}
+
 // MARK: - SpaceSectionView
 
-/// Renders one Space's header and its children (lists then projects).
+/// Renders one Space's children with drag-and-drop support.
 ///
-/// Owning its own `@Query` for lists and projects means SwiftData notifies
-/// this view directly whenever a child is inserted or removed — no
-/// relationship-traversal lag, no need to navigate away and back.
+/// Each row owns a long-press → drag gesture that feeds into the shared
+/// `SidebarDragState`.  The `slots` computed property inserts a gap at the
+/// current drop target position so SwiftUI's layout engine produces the
+/// smooth "push-aside" animation automatically.
 struct SpaceSectionView: View {
-    
-    let space: Space
-    let onSelect: (ContainerTarget) -> Void
-    
-    @Query private var lists: [List]
+
+    let space:     Space
+    /// All spaces — needed so any section can commit a cross-space drop.
+    let allSpaces: [Space]
+    let onSelect:  (ContainerTarget) -> Void
+
+    @Environment(SidebarDragState.self) private var drag
+    @Environment(\.modelContext)        private var context
+
+    @Query private var lists:    [List]
     @Query private var projects: [Project]
-    
-    init(space: Space, onSelect: @escaping (ContainerTarget) -> Void) {
-        self.space = space
-        self.onSelect = onSelect
+
+    init(space: Space, allSpaces: [Space], onSelect: @escaping (ContainerTarget) -> Void) {
+        self.space     = space
+        self.allSpaces = allSpaces
+        self.onSelect  = onSelect
         let id = space.persistentModelID
         _lists = Query(
             filter: #Predicate<List> {
@@ -34,36 +78,180 @@ struct SpaceSectionView: View {
             sort: \.sortIndex
         )
         _projects = Query(
-            filter: #Predicate<Project> {
-                $0.space.persistentModelID == id
-            },
+            filter: #Predicate<Project> { $0.space.persistentModelID == id },
             sort: \.sortIndex
         )
     }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Lists
-            ForEach(lists) { list in
-                Button { onSelect(.list(list)) } label: {
-                    ContainerRowView(symbol: "list.bullet", title: list.title,
-                                     openTaskCount: list.items.filter { !$0.isCompleted }.count,
-                                     color: List.containerColor)
-                }
-                .buttonStyle(ContainerRowButtonStyle())
-            }
-            .padding(.leading, 8)
 
-            // Projects
-            ForEach(projects) { project in
-                Button { onSelect(.project(project)) } label: {
-                    ContainerRowView(symbol: "folder", title: project.title,
-                                     openTaskCount: project.items.filter { !$0.isCompleted }.count,
-                                     color: Project.containerColor)
-                }
-                .buttonStyle(ContainerRowButtonStyle())
-            }
-            .padding(.leading, 8)
+    // MARK: Derived data
+
+    /// Live children merged and sorted by unified sortIndex.
+    private var children: [ContainerChild] {
+        let ls = lists.map(ContainerChild.list)
+        let ps = projects.map(ContainerChild.project)
+        return (ls + ps).sorted { $0.sortIndex < $1.sortIndex }
+    }
+
+    /// Display list: the dragged item is **kept** in the array (removing it
+    /// from `ForEach` would destroy its view and cancel the active gesture
+    /// recogniser).  It is instead collapsed to zero height so it takes no
+    /// layout space.  A gap is inserted at the drop position when this space
+    /// is the current target.
+    private var slots: [SlotItem] {
+        // All children — never filtered — so the dragged row's view (and its
+        // gesture recogniser) are never torn down mid-drag.
+        var result = children.map(SlotItem.child)
+
+        if drag.isDragging, drag.targetSpaceID == space.persistentModelID {
+            // `drag.targetIndex` is computed against *kids* (children with the
+            // dragged item removed).  `result` still contains the ghost, so
+            // when the ghost sits before the insertion point every slot beyond
+            // it is shifted by one.  Compensate with a +1 offset in that case.
+            let ghostPos = children.firstIndex(where: { drag.dragging?.id == $0.id })
+            let adjusted = ghostPos.map { drag.targetIndex > $0 ? drag.targetIndex + 1
+                                                                 : drag.targetIndex }
+                           ?? drag.targetIndex
+            let idx = max(0, min(adjusted, result.count))
+            result.insert(.gap, at: idx)
         }
+        return result
+    }
+
+    // MARK: Body
+
+    var body: some View {
+        // spacing: 0 so we can suppress the gap around the collapsed ghost row.
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(slots) { slot in
+                switch slot {
+                case .child(let child):
+                    let isGhosted = drag.dragging?.id == child.id
+                    rowView(for: child)
+                        // Collapsed ghost takes no space; normal rows keep 8 pt below.
+                        .padding(.bottom, isGhosted ? 0 : 8)
+                        .background(frameAnchor(for: child))
+                case .gap:
+                    DropGapView(height: drag.cardHeight)
+                        .padding(.bottom, 8)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.85).combined(with: .opacity),
+                            removal:   .opacity.animation(.easeOut(duration: 0.1))
+                        ))
+                }
+            }
+        }
+        .animation(.spring(duration: 0.28, bounce: 0.25), value: slots)
+        .padding(.leading, 8)
+    }
+
+    // MARK: - Row view
+
+    @ViewBuilder
+    private func rowView(for child: ContainerChild) -> some View {
+        let isGhosted = drag.dragging?.id == child.id
+
+        Button { if !drag.isDragging, !drag.justEndedDrag { onSelect(child.target) } } label: {
+            ContainerRowView(
+                symbol:        child.symbol,
+                title:         child.title,
+                openTaskCount: child.openTaskCount,
+                color:         child.containerColor
+            )
+        }
+        .buttonStyle(ContainerRowButtonStyle())
+        .simultaneousGesture(dragGesture(for: child))
+        // Collapse the source row to zero height so it takes no layout space
+        // while remaining in the view hierarchy (keeping the gesture alive).
+        // The floating card in ContainersSidebarView renders the item visually.
+        .frame(height: isGhosted ? 0 : nil)
+        .clipped()
+        .allowsHitTesting(!isGhosted)
+    }
+
+    // MARK: - Drag gesture
+
+    private func dragGesture(for child: ContainerChild) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.4)
+            .sequenced(before: DragGesture(minimumDistance: 0,
+                                           coordinateSpace: .named("sidebar")))
+            .onChanged { value in
+                switch value {
+                case .second(true, let g?):
+                    if !drag.isDragging {
+                        drag.begin(child: child,
+                                   at:     g.startLocation,
+                                   height: drag.cardHeight)
+                    }
+                    drag.location = g.location
+                    drag.updateTarget(in: allSpaces)
+                default:
+                    break
+                }
+            }
+            .onEnded { _ in
+                guard drag.isDragging else { return }
+                commitDrop()
+            }
+    }
+
+    // MARK: - Frame reporting
+
+    /// Transparent background that publishes the row's frame via `RowFrameKey`
+    /// and keeps `drag.cardHeight` in sync.
+    private func frameAnchor(for child: ContainerChild) -> some View {
+        GeometryReader { geo in
+            let frame = geo.frame(in: .named("sidebar"))
+            Color.clear
+                .preference(key: RowFrameKey.self, value: [child.id: frame])
+                .onChange(of: geo.size.height, initial: true) { _, h in
+                    if !drag.isDragging { drag.cardHeight = h }
+                }
+        }
+    }
+
+    // MARK: - Drop commit
+
+    private func commitDrop() {
+        defer { drag.end() }
+
+        guard let dragging       = drag.dragging,
+              let targetSpaceID  = drag.targetSpaceID,
+              let targetSpace    = allSpaces.first(where: { $0.persistentModelID == targetSpaceID })
+        else { return }
+
+        // Determine source space before we mutate anything
+        let sourceSpaceID: PersistentIdentifier? = {
+            switch dragging {
+            case .list(let l):    return l.space?.persistentModelID
+            case .project(let p): return p.space.persistentModelID
+            }
+        }()
+        let isCrossSpace = sourceSpaceID != targetSpace.persistentModelID
+
+        // Build the intended child order for the target space
+        var targetChildren = Containers.children(of: targetSpace)
+        targetChildren.removeAll { $0.id == dragging.id }
+        let idx = max(0, min(drag.targetIndex, targetChildren.count))
+        targetChildren.insert(dragging, at: idx)
+
+        // Re-parent if moving across spaces
+        if isCrossSpace {
+            switch dragging {
+            case .list(let l):    l.space = targetSpace
+            case .project(let p): p.space = targetSpace
+            }
+        }
+
+        // Write unified sortIndex values to the target space
+        Containers.repack(targetChildren)
+
+        // Repack source space's remaining children
+        if isCrossSpace,
+           let srcID    = sourceSpaceID,
+           let srcSpace = allSpaces.first(where: { $0.persistentModelID == srcID }) {
+            Containers.repack(Containers.children(of: srcSpace))
+        }
+
+        try? context.save()
     }
 }
