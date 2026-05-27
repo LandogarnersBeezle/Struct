@@ -40,7 +40,7 @@ private struct DropGapView: View {
                 Color.accentColor.opacity(0.55),
                 style: StrokeStyle(lineWidth: 1.5, dash: [6, 3])
             )
-            .frame(height: max(height, 28))
+            .frame(height: height)
             .padding(.horizontal, 4)
     }
 }
@@ -122,14 +122,20 @@ struct SpaceSectionView: View {
     var body: some View {
         // spacing: 0 so we can suppress the gap around the collapsed ghost row.
         VStack(alignment: .leading, spacing: 0) {
+            // bounce: 0 — crisp, no-overshoot spring for both drag start
+            // (row collapses cleanly) and gap movement (rows glide apart).
             ForEach(slots) { slot in
                 switch slot {
                 case .child(let child):
                     let isGhosted = drag.dragging?.id == child.id
                     rowView(for: child)
+                        // frameAnchor must sit before .padding so the GeometryReader
+                        // measures the raw row height (excluding the 8 pt gap).
+                        // DropGapView uses that same height, so the gap slot and a
+                        // normal row slot are identical in total height.
+                        .background(frameAnchor(for: child))
                         // Collapsed ghost takes no space; normal rows keep 8 pt below.
                         .padding(.bottom, isGhosted ? 0 : 8)
-                        .background(frameAnchor(for: child))
                 case .gap:
                     DropGapView(height: drag.cardHeight)
                         .padding(.bottom, 8)
@@ -140,7 +146,7 @@ struct SpaceSectionView: View {
                 }
             }
         }
-        .animation(.spring(duration: 0.28, bounce: 0.25), value: slots)
+        .animation(.spring(duration: 0.22, bounce: 0), value: slots)
         .padding(.leading, 8)
     }
 
@@ -160,9 +166,11 @@ struct SpaceSectionView: View {
         }
         .buttonStyle(ContainerRowButtonStyle())
         .simultaneousGesture(dragGesture(for: child))
-        // Collapse the source row to zero height so it takes no layout space
-        // while remaining in the view hierarchy (keeping the gesture alive).
-        // The floating card in ContainersSidebarView renders the item visually.
+        // Fade the row content out as it collapses — both driven by the same
+        // VStack spring so they animate together in one smooth motion.
+        .opacity(isGhosted ? 0 : 1)
+        // Collapse layout height to zero; the view stays in the hierarchy so
+        // the active gesture recogniser is never torn down.
         .frame(height: isGhosted ? 0 : nil)
         .clipped()
         .allowsHitTesting(!isGhosted)
@@ -178,12 +186,25 @@ struct SpaceSectionView: View {
                 switch value {
                 case .second(true, let g?):
                     if !drag.isDragging {
+                        // ── First pass: drag just started ──────────────────
+                        // Pre-set the target to the item's own current slot so
+                        // the gap opens in-place — zero net displacement for
+                        // every other row.  The VStack's no-bounce spring then
+                        // collapses the row smoothly without snapping.
+                        if let idx = children.firstIndex(where: { $0.id == child.id }) {
+                            drag.targetSpaceID = space.persistentModelID
+                            drag.targetIndex   = idx
+                        }
                         drag.begin(child: child,
                                    at:     g.startLocation,
                                    height: drag.cardHeight)
+                        // updateTarget intentionally skipped: gap is already
+                        // in the correct slot and the finger hasn't moved yet.
+                    } else {
+                        // ── Subsequent passes: finger is moving ─────────────
+                        drag.location = g.location
+                        drag.updateTarget(in: allSpaces)
                     }
-                    drag.location = g.location
-                    drag.updateTarget(in: allSpaces)
                 default:
                     break
                 }

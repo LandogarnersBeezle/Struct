@@ -79,6 +79,12 @@ final class SidebarDragState {
 
     var isDragging: Bool { dragging != nil }
 
+    /// Keeps the floating card alive and visible during its fade-out after a
+    /// drop.  Set alongside `dragging` in `begin()`; cleared with an easeOut
+    /// animation in `end()` so the card fades independently from the layout
+    /// snap that clears `dragging`.
+    private(set) var floatingCardChild: ContainerChild? = nil
+
     /// `true` during the same synchronous execution block as `end()`, then
     /// reset asynchronously.  Prevents the Button's tap action from firing
     /// navigation on the touch-up event that also ends the drag.
@@ -88,19 +94,28 @@ final class SidebarDragState {
 
     func begin(child: ContainerChild, at point: CGPoint, height: CGFloat) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        dragging   = child
-        location   = point
-        cardHeight = height
+        dragging          = child
+        floatingCardChild = child
+        location          = point
+        cardHeight        = height
     }
 
     func end() {
-        justEndedDrag = true
-        withAnimation(.spring(duration: 0.25, bounce: 0.2)) {
+        // Instantly reset all layout state — no ghost row re-expansion
+        // animation and no overshooting spring bounce on drop.
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
             dragging = nil
         }
-        // Reset after the current synchronous block so that any Button action
-        // that fires on the same touch-up event sees justEndedDrag == true.
+        justEndedDrag = true
+        // On the next run loop: fade the card out and unblock tap navigation.
+        // Deferring keeps the card visible for one frame while SwiftData
+        // delivers the repacked sortIndex update, masking the layout snap.
         DispatchQueue.main.async { [weak self] in
+            withAnimation(.easeOut(duration: 0.18)) {
+                self?.floatingCardChild = nil
+            }
             self?.justEndedDrag = false
         }
     }

@@ -93,7 +93,9 @@ struct ContainersSidebarView: View {
 
     @ViewBuilder
     private var floatingCardOverlay: some View {
-        if drag.isDragging, let child = drag.dragging {
+        // Driven by floatingCardChild (not dragging) so the card outlives the
+        // drag state and can fade out independently after a drop.
+        if let child = drag.floatingCardChild {
             GeometryReader { proxy in
                 ContainerRowView(
                     symbol:        child.symbol,
@@ -109,14 +111,13 @@ struct ContainersSidebarView: View {
                         .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
                         .opacity(0.5)
                 )
-                .scaleEffect(1)
                 // Center horizontally in the sidebar; follow finger vertically
                 .position(x: proxy.size.width / 2,
                           y: drag.location.y)
             }
             .allowsHitTesting(false)
-            .transition(.opacity.combined(with: .scale(scale: 0.92)))
-            .animation(.spring(duration: 0.2, bounce: 0.3), value: drag.isDragging)
+            // Fade in on lift; fade out via easeOut in SidebarDragState.end()
+            .transition(.opacity)
             .zIndex(999)
         }
     }
