@@ -148,6 +148,13 @@ struct SpaceSectionView: View {
         }
         .animation(.spring(duration: 0.22, bounce: 0), value: slots)
         .padding(.leading, 8)
+        // When this space is being dragged as a whole, collapse all its children
+        // so only the (ghost) space header remains visible in the layout.
+        .opacity(drag.draggingSpace?.persistentModelID == space.persistentModelID ? 0 : 1)
+        .frame(height: drag.draggingSpace?.persistentModelID == space.persistentModelID ? 0 : nil)
+        .clipped()
+        .animation(.spring(duration: 0.22, bounce: 0),
+                   value: drag.draggingSpace?.persistentModelID)
     }
 
     // MARK: - Row view

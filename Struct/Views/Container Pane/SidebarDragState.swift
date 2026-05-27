@@ -120,7 +120,63 @@ final class SidebarDragState {
         }
     }
 
-    // MARK: Target computation
+    // MARK: - Space drag state
+
+    /// The space currently being dragged (its children are collapsed); nil when idle.
+    var draggingSpace: Space? = nil
+
+    /// Keeps the space floating card alive through its fade-out after a drop.
+    private(set) var spaceFloatingCardSpace: Space? = nil
+
+    /// Insertion index into the spaces array, recomputed live during a space drag.
+    var spaceTargetIndex: Int = 0
+
+    /// Height of the space header that started the drag; sizes the space gap.
+    var spaceCardHeight: CGFloat = 44
+
+    var isDraggingSpace: Bool { draggingSpace != nil }
+
+    func beginSpaceDrag(space: Space, at point: CGPoint, headerHeight: CGFloat) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        draggingSpace          = space
+        spaceFloatingCardSpace = space
+        location               = point
+        spaceCardHeight        = headerHeight
+    }
+
+    func endSpaceDrag() {
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { draggingSpace = nil }
+        justEndedDrag = true
+        DispatchQueue.main.async { [weak self] in
+            withAnimation(.easeOut(duration: 0.18)) { self?.spaceFloatingCardSpace = nil }
+            self?.justEndedDrag = false
+        }
+    }
+
+    /// Recomputes `spaceTargetIndex` from `location` and `spaceHeaderFrames`.
+    func updateSpaceTarget(in spaces: [Space]) {
+        let y      = location.y
+        let others = spaces.filter { draggingSpace?.persistentModelID != $0.persistentModelID }
+
+        struct Candidate { let index: Int; let dist: CGFloat }
+        var best: Candidate?
+        func consider(_ c: Candidate) { if best == nil || c.dist < best!.dist { best = c } }
+
+        for (i, space) in others.enumerated() {
+            guard let frame = spaceHeaderFrames[space.persistentModelID] else { continue }
+            let insertIndex = y < frame.midY ? i : i + 1
+            consider(Candidate(index: insertIndex, dist: abs(frame.midY - y)))
+        }
+        if let lastFrame = others.compactMap({ spaceHeaderFrames[$0.persistentModelID] }).last {
+            consider(Candidate(index: others.count, dist: abs(lastFrame.maxY - y)))
+        }
+        guard let b = best else { return }
+        withAnimation(.spring(duration: 0.22, bounce: 0)) { spaceTargetIndex = b.index }
+    }
+
+    // MARK: - Container target computation
 
     /// Recomputes `targetSpaceID` and `targetIndex` from the current
     /// `location`, `rowFrames`, and `spaceHeaderFrames`.  Call this inside

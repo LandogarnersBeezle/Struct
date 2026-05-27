@@ -8,6 +8,24 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - SpaceSlotItem
+
+/// Display slot for the spaces list: either a real space section or the
+/// animated drop-zone gap shown during a space drag.
+private enum SpaceSlotItem: Identifiable, Equatable {
+    case space(Space)
+    case gap
+
+    var id: AnyHashable {
+        switch self {
+        case .space(let s): AnyHashable(s.persistentModelID)
+        case .gap:          AnyHashable("space-gap")
+        }
+    }
+
+    static func == (lhs: SpaceSlotItem, rhs: SpaceSlotItem) -> Bool { lhs.id == rhs.id }
+}
+
 // MARK: - ContainersSidebarView
 
 /// Layout host for the leading sidebar pane.
@@ -33,6 +51,8 @@ struct ContainersSidebarView: View {
     /// survives sidebar hide/show transitions.
     @Binding var pendingCreate: CreateKind?
 
+    @Environment(\.modelContext) private var modelContext
+
     // MARK: Drag state
 
     @State private var drag = SidebarDragState()
@@ -51,12 +71,28 @@ struct ContainersSidebarView: View {
             .padding(5)
         }
 
-        // ZStack: scroll content behind + floating drag card on top
+        // ZStack: scroll content behind + floating drag cards on top
         ZStack(alignment: .top) {
             scrollContent
             floatingCardOverlay
+            spaceFloatingCardOverlay
         }
         .environment(drag)
+    }
+
+    // MARK: - Space slots
+
+    /// Spaces array with a gap inserted at the current drop position during a
+    /// space drag — mirrors the container slot mechanism in SpaceSectionView.
+    private var spaceSlots: [SpaceSlotItem] {
+        var result = spaces.map(SpaceSlotItem.space)
+        guard drag.isDraggingSpace else { return result }
+        let ghostPos = spaces.firstIndex { drag.draggingSpace?.persistentModelID == $0.persistentModelID }
+        let adjusted = ghostPos.map { drag.spaceTargetIndex > $0 ? drag.spaceTargetIndex + 1
+                                                                  : drag.spaceTargetIndex }
+                       ?? drag.spaceTargetIndex
+        result.insert(.gap, at: max(0, min(adjusted, result.count)))
+        return result
     }
 
     // MARK: - Scroll content
@@ -64,29 +100,44 @@ struct ContainersSidebarView: View {
     private var scrollContent: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                ForEach(spaces) { space in
-                    Section {
-                        SpaceSectionView(space: space, allSpaces: spaces, onSelect: onSelect)
-                            .padding(.horizontal, 5)
-                            .padding(.bottom, 8)
-                    } header: {
-                        spaceHeader(for: space)
+                ForEach(spaceSlots) { slot in
+                    switch slot {
+                    case .space(let space):
+                        let isGhost = drag.draggingSpace?.persistentModelID == space.persistentModelID
+                        Section {
+                            SpaceSectionView(space: space, allSpaces: spaces, onSelect: onSelect)
+                                .padding(.horizontal, 5)
+                                .padding(.bottom, isGhost ? 0 : 8)
+                        } header: {
+                            spaceHeader(for: space)
+                        }
+                    case .gap:
+                        spaceDropGap
                     }
                 }
             }
+            .animation(.spring(duration: 0.22, bounce: 0), value: spaceSlots)
         }
-        // Name the coordinate space so DragGesture and GeometryReader in
-        // child rows all share the same reference frame.
         .coordinateSpace(.named("sidebar"))
-        // Route preference-key frames into drag state
-        .onPreferenceChange(RowFrameKey.self) { frames in
-            drag.rowFrames = frames
-        }
-        .onPreferenceChange(SpaceHeaderFrameKey.self) { frames in
-            drag.spaceHeaderFrames = frames
-        }
+        .onPreferenceChange(RowFrameKey.self)        { drag.rowFrames        = $0 }
+        .onPreferenceChange(SpaceHeaderFrameKey.self) { drag.spaceHeaderFrames = $0 }
         .safeAreaInset(edge: .bottom) { addMenu.padding() }
         .sheet(item: $pendingCreate) { CreateContainerView(kind: $0) }
+    }
+
+    // MARK: - Space drop gap
+
+    private var spaceDropGap: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .strokeBorder(Color.accentColor.opacity(0.55),
+                          style: StrokeStyle(lineWidth: 1.5, dash: [6, 3]))
+            .frame(height: drag.spaceCardHeight)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .transition(.asymmetric(
+                insertion: .scale(scale: 0.85).combined(with: .opacity),
+                removal:   .opacity.animation(.easeOut(duration: 0.1))
+            ))
     }
 
     // MARK: - Floating drag card
@@ -124,49 +175,128 @@ struct ContainersSidebarView: View {
 
     // MARK: - Space header
 
+    /// Shared row content used by both the header button and the floating card.
+    @ViewBuilder
+    private func spaceRowContent(for space: Space) -> some View {
+        HStack {
+            Image(systemName: space.symbolName)
+                .foregroundStyle(Space.containerColor)
+                .frame(width: 24)
+            Text(space.name)
+                .lineLimit(1)
+            Spacer()
+            let openCount = space.items.filter { !$0.isCompleted }.count
+            if openCount > 0 {
+                Text("\(openCount)")
+                    .foregroundStyle(.secondary)
+                    .padding(5)
+                    .background {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.secondary.opacity(0.1))
+                    }
+                    .padding(.trailing, 5)
+            }
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
     private func spaceHeader(for space: Space) -> some View {
+        let isGhost = drag.draggingSpace?.persistentModelID == space.persistentModelID
         VStack(alignment: .leading, spacing: 0) {
             Divider()
-            // Report the header's frame so empty spaces are valid drop targets.
-            // The invisible GeometryReader sits behind the Divider/button content
-            // and has no visual effect.
-            Button { onSelect(.space(space)) } label: {
-                HStack {
-                    Image(systemName: space.symbolName)
-                        .foregroundStyle(Space.containerColor)
-                        .frame(width: 24)
-                    Text(space.name)
-                        .lineLimit(1)
-                    Spacer()
-                    let openCount = space.items.filter { !$0.isCompleted }.count
-                    if openCount > 0 {
-                        Text("\(openCount)")
-                            .foregroundStyle(.secondary)
-                            .padding(5)
-                            .background {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.secondary.opacity(0.1))
-                            }
-                            .padding(.trailing, 5)
-                    }
-                }
-                .padding(.horizontal, 5)
-                .padding(.vertical, 4)
-                .padding(.bottom, 10)
-                .contentShape(Rectangle())
+            Button {
+                if !drag.isDraggingSpace, !drag.justEndedDrag { onSelect(.space(space)) }
+            } label: {
+                spaceRowContent(for: space).padding(.bottom, 10)
             }
             .buttonStyle(ContainerRowButtonStyle())
+            .simultaneousGesture(spaceDragGesture(for: space))
         }
         .background {
             GeometryReader { geo in
-                let spaceID = space.persistentModelID
-                Color.clear.preference(
-                    key: SpaceHeaderFrameKey.self,
-                    value: [spaceID: geo.frame(in: .named("sidebar"))]
-                )
+                Color.clear.preference(key: SpaceHeaderFrameKey.self,
+                                       value: [space.persistentModelID: geo.frame(in: .named("sidebar"))])
             }
         }
         .background(.background)
+        // Ghost: collapse header to zero height so the space slot takes no space,
+        // while keeping the view (and its gesture recogniser) in the hierarchy.
+        .opacity(isGhost ? 0 : 1)
+        .frame(height: isGhost ? 0 : nil)
+        .clipped()
+        .allowsHitTesting(!isGhost)
+        .animation(.spring(duration: 0.22, bounce: 0), value: isGhost)
+    }
+
+    // MARK: - Space floating card
+
+    /// Mirrors the dragged space's header content; outlives `draggingSpace`
+    /// so it can fade out independently after the drop (same pattern as
+    /// `floatingCardOverlay` for container rows).
+    @ViewBuilder
+    private var spaceFloatingCardOverlay: some View {
+        if let space = drag.spaceFloatingCardSpace {
+            GeometryReader { proxy in
+                spaceRowContent(for: space)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(.background)
+                            .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
+                            .opacity(0.5)
+                    )
+                    .position(x: proxy.size.width / 2, y: drag.location.y)
+            }
+            .allowsHitTesting(false)
+            .transition(.opacity)
+            .zIndex(999)
+        }
+    }
+
+    // MARK: - Space drag gesture
+
+    private func spaceDragGesture(for space: Space) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.4)
+            .sequenced(before: DragGesture(minimumDistance: 0,
+                                           coordinateSpace: .named("sidebar")))
+            .onChanged { value in
+                switch value {
+                case .second(true, let g?):
+                    if !drag.isDraggingSpace {
+                        // Pre-set target to the space's own position so the gap
+                        // opens in-place and no other spaces shift on first render.
+                        if let idx = spaces.firstIndex(where: { $0.persistentModelID == space.persistentModelID }) {
+                            drag.spaceTargetIndex = idx
+                        }
+                        let h = drag.spaceHeaderFrames[space.persistentModelID]?.height ?? 44
+                        drag.beginSpaceDrag(space: space, at: g.startLocation, headerHeight: h)
+                    } else {
+                        drag.location = g.location
+                        drag.updateSpaceTarget(in: spaces)
+                    }
+                default: break
+                }
+            }
+            .onEnded { _ in
+                guard drag.isDraggingSpace else { return }
+                commitSpaceDrop()
+            }
+    }
+
+    // MARK: - Commit space drop
+
+    private func commitSpaceDrop() {
+        defer { drag.endSpaceDrag() }
+        guard let dragging = drag.draggingSpace else { return }
+        var ordered = spaces.filter { dragging.persistentModelID != $0.persistentModelID }
+        let idx = max(0, min(drag.spaceTargetIndex, ordered.count))
+        ordered.insert(dragging, at: idx)
+        for (i, space) in ordered.enumerated() { space.sortIndex = i }
+        try? modelContext.save()
     }
 
     // MARK: - Add menu
