@@ -124,10 +124,13 @@ struct ContainersSidebarView: View {
         // Capture the sidebar viewport's origin in window coordinates so the
         // UIKit-backed gesture overlay can report finger locations in the
         // "sidebar" named coordinate space (drag.toSidebar).
-        .background {
+        // We use an overlay instead of background to ensure the GeometryReader
+        // is laid out correctly and the preference propagates properly.
+        .overlay {
             GeometryReader { geo in
-                Color.clear.preference(key: SidebarOriginKey.self,
-                                       value: geo.frame(in: .global).origin)
+                Color.clear
+                    .preference(key: SidebarOriginKey.self,
+                                value: geo.frame(in: .global).origin)
             }
         }
         // Disable scrolling once a long press fires so the drag-for-reorder
