@@ -54,6 +54,7 @@ struct ContainerRowView: View {
         }
         .padding(.vertical, 3)
         .contentShape(Rectangle())
+        .fontWeight(.semibold)
     }
 }
 

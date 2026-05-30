@@ -79,6 +79,12 @@ final class SidebarDragState {
 
     var isDragging: Bool { dragging != nil }
 
+    /// `true` from the moment a long-press fires (before the finger has moved
+    /// enough to set `isDragging` / `isDraggingSpace`) until the gesture ends.
+    /// Used to disable `ScrollView` scrolling once the user commits to a drag,
+    /// while still allowing normal scroll before the long-press threshold.
+    var longPressActive: Bool = false
+
     /// Keeps the floating card alive and visible during its fade-out after a
     /// drop.  Set alongside `dragging` in `begin()`; cleared with an easeOut
     /// animation in `end()` so the card fades independently from the layout
@@ -101,6 +107,7 @@ final class SidebarDragState {
     }
 
     func end() {
+        longPressActive = false
         // Instantly reset all layout state — no ghost row re-expansion
         // animation and no overshooting spring bounce on drop.
         var t = Transaction()
@@ -145,6 +152,7 @@ final class SidebarDragState {
     }
 
     func endSpaceDrag() {
+        longPressActive = false
         var t = Transaction()
         t.disablesAnimations = true
         withTransaction(t) { draggingSpace = nil }

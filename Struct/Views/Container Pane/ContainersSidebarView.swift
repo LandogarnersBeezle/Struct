@@ -30,15 +30,15 @@ private enum SpaceSlotItem: Identifiable, Equatable {
 
 /// Layout host for the leading sidebar pane.
 ///
-/// Owns the shared `SidebarDragState` and injects it into the view hierarchy
-/// via `.environment`.  Collects per-row frames through `RowFrameKey` and
-/// routes them into `drag.rowFrames` so drop-target computation (which runs
-/// entirely inside `SidebarDragState`) has up-to-date geometry.
+/// Owns the shared SidebarDragState and injects it into the view hierarchy
+/// via .environment.  Collects per-row frames through RowFrameKey and
+/// routes them into drag.rowFrames so drop-target computation (which runs
+/// entirely inside SidebarDragState) has up-to-date geometry.
 ///
 /// The floating drag card and the dashed drop-zone gap together produce the
-/// smooth "push-aside" animation: the gap is rendered by `SpaceSectionView`
+/// smooth "push-aside" animation: the gap is rendered by SpaceSectionView
 /// in the normal layout flow (so other rows spring apart naturally), while
-/// the card floats above everything in a `ZStack` overlay.
+/// the card floats above everything in a ZStack overlay.
 struct ContainersSidebarView: View {
 
     let inbox:  List?
@@ -55,7 +55,8 @@ struct ContainersSidebarView: View {
 
     // MARK: Drag state
 
-    @State private var drag = SidebarDragState()
+    @State private var drag           = SidebarDragState()
+    @State private var swipeSelection = SidebarSwipeSelection()
 
     // MARK: Body
 
@@ -78,6 +79,7 @@ struct ContainersSidebarView: View {
             spaceFloatingCardOverlay
         }
         .environment(drag)
+        .environment(swipeSelection)
     }
 
     // MARK: - Space slots
@@ -119,10 +121,32 @@ struct ContainersSidebarView: View {
             .animation(.spring(duration: 0.22, bounce: 0), value: spaceSlots)
         }
         .coordinateSpace(.named("sidebar"))
+        // Disable scrolling while a long press (or active drag) is in progress
+        // so the DragGesture used for reordering doesn't compete with the
+        // ScrollView's pan gesture.  Before the long press fires the flag is
+        // false and the user can scroll freely.
+        .scrollDisabled(drag.longPressActive || drag.isDragging || drag.isDraggingSpace)
         .onPreferenceChange(RowFrameKey.self)        { drag.rowFrames        = $0 }
         .onPreferenceChange(SpaceHeaderFrameKey.self) { drag.spaceHeaderFrames = $0 }
-        .safeAreaInset(edge: .bottom) { addMenu.padding() }
+        .safeAreaInset(edge: .bottom) {
+            // The add button and the action bar share the same fixed-height slot
+            // (using a ZStack) so the scroll inset never changes size — rows near
+            // the bottom are always fully visible regardless of which is active.
+            ZStack {
+                addMenu
+                    .opacity(swipeSelection.active == nil ? 1 : 0)
+                    .scaleEffect(swipeSelection.active == nil ? 1 : 0.85)
+                ContainerActionBar()
+                    .opacity(swipeSelection.active != nil ? 1 : 0)
+                    .scaleEffect(swipeSelection.active != nil ? 1 : 0.85)
+            }
+            .animation(.spring(duration: 0.28, bounce: 0), value: swipeSelection.active != nil)
+            .padding()
+        }
         .sheet(item: $pendingCreate) { CreateContainerView(kind: $0) }
+        // Dismiss any open action bar when a drag-and-drop begins.
+        .onChange(of: drag.isDragging)      { _, on in if on { swipeSelection.clear() } }
+        .onChange(of: drag.isDraggingSpace) { _, on in if on { swipeSelection.clear() } }
     }
 
     // MARK: - Space drop gap
@@ -184,6 +208,7 @@ struct ContainersSidebarView: View {
                 .frame(width: 24)
             Text(space.name)
                 .lineLimit(1)
+                .fontWeight(.bold)
             Spacer()
             let openCount = space.items.filter { !$0.isCompleted }.count
             if openCount > 0 {
@@ -206,14 +231,19 @@ struct ContainersSidebarView: View {
     private func spaceHeader(for space: Space) -> some View {
         let isGhost = drag.draggingSpace?.persistentModelID == space.persistentModelID
         VStack(alignment: .leading, spacing: 0) {
+            // Divider stays outside the swipeable region — it belongs to the
+            // section boundary, not to the interactive button row.
             Divider()
-            Button {
-                if !drag.isDraggingSpace, !drag.justEndedDrag { onSelect(.space(space)) }
-            } label: {
-                spaceRowContent(for: space).padding(.bottom, 10)
+            ContainerSwipeActions(container: .space(space)) {
+                Button {
+                    if !drag.isDraggingSpace, !drag.justEndedDrag,
+                       !swipeSelection.justTriggered { onSelect(.space(space)) }
+                } label: {
+                    spaceRowContent(for: space).padding(.bottom, 10)
+                }
+                .buttonStyle(ContainerRowButtonStyle())
+                .simultaneousGesture(spaceDragGesture(for: space))
             }
-            .buttonStyle(ContainerRowButtonStyle())
-            .simultaneousGesture(spaceDragGesture(for: space))
         }
         .background {
             GeometryReader { geo in
@@ -233,9 +263,9 @@ struct ContainersSidebarView: View {
 
     // MARK: - Space floating card
 
-    /// Mirrors the dragged space's header content; outlives `draggingSpace`
+    /// Mirrors the dragged space's header content; outlives draggingSpace
     /// so it can fade out independently after the drop (same pattern as
-    /// `floatingCardOverlay` for container rows).
+    /// floatingCardOverlay for container rows).
     @ViewBuilder
     private var spaceFloatingCardOverlay: some View {
         if let space = drag.spaceFloatingCardSpace {
@@ -265,6 +295,9 @@ struct ContainersSidebarView: View {
                                            coordinateSpace: .named("sidebar")))
             .onChanged { value in
                 switch value {
+                case .first(true):
+                    // Long press fired; disable scroll before the finger moves.
+                    drag.longPressActive = true
                 case .second(true, let g?):
                     if !drag.isDraggingSpace {
                         // Pre-set target to the space's own position so the gap
@@ -282,6 +315,9 @@ struct ContainersSidebarView: View {
                 }
             }
             .onEnded { _ in
+                // Always clear the long-press flag — covers the case where the
+                // long press fired but the user lifted before a drag began.
+                drag.longPressActive = false
                 guard drag.isDraggingSpace else { return }
                 commitSpaceDrop()
             }
