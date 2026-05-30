@@ -164,95 +164,60 @@ struct SpaceSectionView: View {
     private func rowView(for child: ContainerChild) -> some View {
         let isGhosted = drag.dragging?.id == child.id
 
-        // The button is the same for both child types; @ViewBuilder lets us
-        // switch on `child` to pick the right ContainerSwipeActions wrapper.
-        Group {
-            switch child {
-            case .list(let list):
-                ContainerSwipeActions(container: .list(list)) { rowButton(for: child) }
-            case .project(let project):
-                ContainerSwipeActions(container: .project(project)) { rowButton(for: child) }
-            }
-        }
-        // The drag-and-drop gesture sits here — outside ContainerSwipeActions and
-        // outside the Button — so the Button carries only its tap recogniser.
-        // This prevents UIScrollView's pan from being blocked by nested gesture
-        // competition when the user tries to scroll by pressing a row.
-        .simultaneousGesture(dragGesture(for: child))
-        // Ghost-collapse modifiers live outside the swipe wrapper so the full
-        // view (content + action strip) collapses together during a drag.
-        .opacity(isGhosted ? 0 : 1)
-        .frame(height: isGhosted ? 0 : nil)
-        .clipped()
-        .allowsHitTesting(!isGhosted)
-    }
-
-    /// Tappable row content for navigation.
-    ///
-    /// Uses `onTapGesture` instead of `Button` so that UIScrollView's pan
-    /// recogniser can cancel the touch the instant it detects vertical motion.
-    /// A `Button` with a pressed-tracking `ButtonStyle` installs a UIKit
-    /// recogniser that the scroll view must wait on, which prevents scrolling
-    /// from starting on a row touch.
-    @ViewBuilder
-    private func rowButton(for child: ContainerChild) -> some View {
         ContainerRowView(
             symbol:        child.symbol,
             title:         child.title,
             openTaskCount: child.openTaskCount,
             color:         child.containerColor
         )
-        .onTapGesture {
-            if !drag.isDragging, !drag.justEndedDrag, !swipeSelection.justTriggered {
-                onSelect(child.target)
-            }
+        // Single UIKit-backed gesture pipeline handles tap, swipe-left, and
+        // long-press-drag without competing with the ScrollView's pan.
+        .sidebarRowInteraction(
+            isHighlighted: swipeSelection.matches(child.swipeKind),
+            onTap:            { handleTap(child) },
+            onSwipeTriggered: { swipeSelection.toggle(child.swipeKind) },
+            onDragBegan:      { handleDragBegan(child, at: $0) },
+            onDragChanged:    { handleDragChanged(at: $0) },
+            onDragEnded:      { handleDragEnded() }
+        )
+        // Ghost-collapse: keep the view (and its gesture host) alive but at
+        // zero height so the active recogniser is not torn down mid-drag.
+        .opacity(isGhosted ? 0 : 1)
+        .frame(height: isGhosted ? 0 : nil)
+        .clipped()
+        .allowsHitTesting(!isGhosted)
+    }
+
+    // MARK: - Gesture callbacks
+
+    private func handleTap(_ child: ContainerChild) {
+        if !drag.isDragging, !drag.justEndedDrag, !swipeSelection.justTriggered {
+            onSelect(child.target)
         }
     }
 
-    // MARK: - Drag gesture
+    private func handleDragBegan(_ child: ContainerChild, at windowLoc: CGPoint) {
+        drag.longPressActive = true
+        let loc = drag.toSidebar(windowLoc)
+        // Pre-set the target to the row's own current slot so the gap opens
+        // in-place — zero net displacement for every other row.
+        if let idx = children.firstIndex(where: { $0.id == child.id }) {
+            drag.targetSpaceID = space.persistentModelID
+            drag.targetIndex   = idx
+        }
+        drag.begin(child: child, at: loc, height: drag.cardHeight)
+    }
 
-    private func dragGesture(for child: ContainerChild) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.4)
-            .sequenced(before: DragGesture(minimumDistance: 8,
-                                           coordinateSpace: .named("sidebar")))
-            .onChanged { value in
-                switch value {
-                case .first(true):
-                    // Long press just fired; disable scroll before the finger
-                    // starts moving so the DragGesture doesn't compete with it.
-                    drag.longPressActive = true
-                case .second(true, let g?):
-                    if !drag.isDragging {
-                        // ── First pass: drag just started ──────────────────
-                        // Pre-set the target to the item's own current slot so
-                        // the gap opens in-place — zero net displacement for
-                        // every other row.  The VStack's no-bounce spring then
-                        // collapses the row smoothly without snapping.
-                        if let idx = children.firstIndex(where: { $0.id == child.id }) {
-                            drag.targetSpaceID = space.persistentModelID
-                            drag.targetIndex   = idx
-                        }
-                        drag.begin(child: child,
-                                   at:     g.startLocation,
-                                   height: drag.cardHeight)
-                        // updateTarget intentionally skipped: gap is already
-                        // in the correct slot and the finger hasn't moved yet.
-                    } else {
-                        // ── Subsequent passes: finger is moving ─────────────
-                        drag.location = g.location
-                        drag.updateTarget(in: allSpaces)
-                    }
-                default:
-                    break
-                }
-            }
-            .onEnded { _ in
-                // Always clear the long-press flag — covers the case where the
-                // long press fired but the user lifted before a drag began.
-                drag.longPressActive = false
-                guard drag.isDragging else { return }
-                commitDrop()
-            }
+    private func handleDragChanged(at windowLoc: CGPoint) {
+        guard drag.isDragging else { return }
+        drag.location = drag.toSidebar(windowLoc)
+        drag.updateTarget(in: allSpaces)
+    }
+
+    private func handleDragEnded() {
+        drag.longPressActive = false
+        guard drag.isDragging else { return }
+        commitDrop()
     }
 
     // MARK: - Frame reporting

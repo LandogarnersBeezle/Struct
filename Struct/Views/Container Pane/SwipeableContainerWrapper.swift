@@ -42,6 +42,15 @@ final class SidebarSwipeSelection {
         default: return false
         }
     }
+
+    /// Swipe-trigger semantics shared by every row: tapping an already-active
+    /// row clears it, otherwise it becomes the new selection.  `markTriggered`
+    /// suppresses the tap that arrives on the same touch-up event.
+    func toggle(_ kind: SwipeableContainerKind) {
+        if matches(kind) { clear() }
+        else             { active = kind }
+        markTriggered()
+    }
 }
 
 // MARK: - SwipeableContainerKind
@@ -51,119 +60,6 @@ enum SwipeableContainerKind {
     case list(List)
     case project(Project)
     case space(Space)
-}
-
-// MARK: - SwipeableRow
-
-/// Swipe-trigger row wrapper.
-///
-/// A short left swipe bounces the row ~20 pt then springs back, calling
-/// onTriggered once.  It does **not** reveal inline buttons; the action
-/// bar appears at the bottom of the sidebar instead.
-///
-/// isHighlighted is driven by the caller (via SidebarSwipeSelection) so
-/// the accent-colour background persists while the action bar is visible.
-///
-/// Uses .simultaneousGesture to coexist with the LongPressGesture →
-/// DragGesture chain used for drag-and-drop reordering.
-struct SwipeableRow<Content: View>: View {
-
-    /// Renders a subtle accent-coloured background while true.
-    var isHighlighted: Bool = false
-    /// Called once when a qualifying left swipe is recognised.
-    let onTriggered: () -> Void
-    @ViewBuilder let content: () -> Content
-
-    @State private var offset: CGFloat = 0
-    /// `true` from the moment a long-press fires until the gesture ends.
-    /// Used to disable ScrollView scrolling once the user commits to a swipe,
-    /// while still allowing normal scroll before the long-press threshold.
-    @State private var longPressActive = false
-
-    var body: some View {
-        content()
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.accentColor.opacity(isHighlighted ? 0.10 : 0))
-                    .animation(.easeOut(duration: 0.2), value: isHighlighted)
-            }
-            .offset(x: offset)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.3)
-                    .sequenced(before: DragGesture(minimumDistance: 8))
-                    .onChanged { value in
-                        switch value {
-                        case .first(true):
-                            // Long press fired; disable scroll before the finger moves.
-                            longPressActive = true
-                        case .second(true, let g?):
-                            handleChanged(g)
-                        default: break
-                        }
-                    }
-                    .onEnded { _ in
-                        // Always clear the long-press flag — covers the case where the
-                        // long press fired but the user lifted before a drag began.
-                        longPressActive = false
-                        // Only trigger swipe if we actually dragged leftward
-                        guard longPressActive || offset < 0 else { return }
-                        // We need the last drag value, but onEnded doesn't provide it.
-                        // Use the current offset to determine if swipe qualified.
-                        handleEnded()
-                    }
-            )
-    }
-
-    // MARK: Gesture
-
-    private func handleChanged(_ v: DragGesture.Value) {
-        let dx = v.translation.width, dy = v.translation.height
-        guard abs(dx) > abs(dy), dx < 0 else { return }
-        // Rubber-band: the row resists at ~35 % of finger speed, capped at 24 pt.
-        offset = max(-24, dx * 0.35)
-    }
-
-    private func handleEnded() {
-        guard offset < -12 else {
-            withAnimation(.spring(duration: 0.25, bounce: 0)) { offset = 0 }
-            return
-        }
-        // Snap briefly to max excursion, then spring back with a small bounce.
-        withAnimation(.spring(duration: 0.12, bounce: 0)) { offset = -20 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            withAnimation(.spring(duration: 0.35, bounce: 0.25)) { offset = 0 }
-        }
-        onTriggered()
-    }
-}
-
-// MARK: - ContainerSwipeActions
-
-/// Connects a sidebar row to the shared SidebarSwipeSelection.
-///
-/// All rename / delete business logic lives in ContainerActionBar; this
-/// wrapper's sole job is detecting the swipe and toggling the selection state.
-struct ContainerSwipeActions<Content: View>: View {
-
-    let container: SwipeableContainerKind
-    @ViewBuilder let content: () -> Content
-
-    @Environment(SidebarSwipeSelection.self) private var selection
-
-    var body: some View {
-        SwipeableRow(
-            isHighlighted: selection.matches(container),
-            onTriggered: {
-                // Swiping the already-active row toggles it off.
-                if selection.matches(container) { selection.clear()            }
-                else                           { selection.active = container }
-                // Suppress the button tap that fires on the same touch-up event.
-                selection.markTriggered()
-            }
-        ) {
-            content()
-        }
-    }
 }
 
 // MARK: - ContainerActionBar

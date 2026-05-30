@@ -121,13 +121,22 @@ struct ContainersSidebarView: View {
             .animation(.spring(duration: 0.22, bounce: 0), value: spaceSlots)
         }
         .coordinateSpace(.named("sidebar"))
-        // Disable scrolling while a long press (or active drag) is in progress
-        // so the DragGesture used for reordering doesn't compete with the
-        // ScrollView's pan gesture.  Before the long press fires the flag is
-        // false and the user can scroll freely.
+        // Capture the sidebar viewport's origin in window coordinates so the
+        // UIKit-backed gesture overlay can report finger locations in the
+        // "sidebar" named coordinate space (drag.toSidebar).
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(key: SidebarOriginKey.self,
+                                       value: geo.frame(in: .global).origin)
+            }
+        }
+        // Disable scrolling once a long press fires so the drag-for-reorder
+        // gesture owns subsequent touches.  Before the long press the flag is
+        // false and the user scrolls freely.
         .scrollDisabled(drag.longPressActive || drag.isDragging || drag.isDraggingSpace)
-        .onPreferenceChange(RowFrameKey.self)        { drag.rowFrames        = $0 }
-        .onPreferenceChange(SpaceHeaderFrameKey.self) { drag.spaceHeaderFrames = $0 }
+        .onPreferenceChange(RowFrameKey.self)         { drag.rowFrames           = $0 }
+        .onPreferenceChange(SpaceHeaderFrameKey.self) { drag.spaceHeaderFrames   = $0 }
+        .onPreferenceChange(SidebarOriginKey.self)    { drag.sidebarOriginInWindow = $0 }
         .safeAreaInset(edge: .bottom) {
             // The add button and the action bar share the same fixed-height slot
             // (using a ZStack) so the scroll inset never changes size — rows near
@@ -231,19 +240,19 @@ struct ContainersSidebarView: View {
     private func spaceHeader(for space: Space) -> some View {
         let isGhost = drag.draggingSpace?.persistentModelID == space.persistentModelID
         VStack(alignment: .leading, spacing: 0) {
-            // Divider stays outside the swipeable region — it belongs to the
-            // section boundary, not to the interactive button row.
+            // Divider stays outside the interactive region — it belongs to the
+            // section boundary, not to the row's hit target.
             Divider()
-            ContainerSwipeActions(container: .space(space)) {
-                Button {
-                    if !drag.isDraggingSpace, !drag.justEndedDrag,
-                       !swipeSelection.justTriggered { onSelect(.space(space)) }
-                } label: {
-                    spaceRowContent(for: space).padding(.bottom, 10)
-                }
-                .buttonStyle(ContainerRowButtonStyle())
-                .simultaneousGesture(spaceDragGesture(for: space))
-            }
+            spaceRowContent(for: space)
+                .padding(.bottom, 10)
+                .sidebarRowInteraction(
+                    isHighlighted: swipeSelection.matches(.space(space)),
+                    onTap:            { handleSpaceTap(space) },
+                    onSwipeTriggered: { swipeSelection.toggle(.space(space)) },
+                    onDragBegan:      { handleSpaceDragBegan(space, at: $0) },
+                    onDragChanged:    { handleSpaceDragChanged(at: $0) },
+                    onDragEnded:      { handleSpaceDragEnded() }
+                )
         }
         .background {
             GeometryReader { geo in
@@ -287,40 +296,36 @@ struct ContainersSidebarView: View {
         }
     }
 
-    // MARK: - Space drag gesture
+    // MARK: - Space gesture callbacks
 
-    private func spaceDragGesture(for space: Space) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.4)
-            .sequenced(before: DragGesture(minimumDistance: 0,
-                                           coordinateSpace: .named("sidebar")))
-            .onChanged { value in
-                switch value {
-                case .first(true):
-                    // Long press fired; disable scroll before the finger moves.
-                    drag.longPressActive = true
-                case .second(true, let g?):
-                    if !drag.isDraggingSpace {
-                        // Pre-set target to the space's own position so the gap
-                        // opens in-place and no other spaces shift on first render.
-                        if let idx = spaces.firstIndex(where: { $0.persistentModelID == space.persistentModelID }) {
-                            drag.spaceTargetIndex = idx
-                        }
-                        let h = drag.spaceHeaderFrames[space.persistentModelID]?.height ?? 44
-                        drag.beginSpaceDrag(space: space, at: g.startLocation, headerHeight: h)
-                    } else {
-                        drag.location = g.location
-                        drag.updateSpaceTarget(in: spaces)
-                    }
-                default: break
-                }
-            }
-            .onEnded { _ in
-                // Always clear the long-press flag — covers the case where the
-                // long press fired but the user lifted before a drag began.
-                drag.longPressActive = false
-                guard drag.isDraggingSpace else { return }
-                commitSpaceDrop()
-            }
+    private func handleSpaceTap(_ space: Space) {
+        if !drag.isDraggingSpace, !drag.justEndedDrag, !swipeSelection.justTriggered {
+            onSelect(.space(space))
+        }
+    }
+
+    private func handleSpaceDragBegan(_ space: Space, at windowLoc: CGPoint) {
+        drag.longPressActive = true
+        let loc = drag.toSidebar(windowLoc)
+        // Pre-set the target to the space's own position so the gap opens
+        // in-place and no other spaces shift on first render.
+        if let idx = spaces.firstIndex(where: { $0.persistentModelID == space.persistentModelID }) {
+            drag.spaceTargetIndex = idx
+        }
+        let h = drag.spaceHeaderFrames[space.persistentModelID]?.height ?? 44
+        drag.beginSpaceDrag(space: space, at: loc, headerHeight: h)
+    }
+
+    private func handleSpaceDragChanged(at windowLoc: CGPoint) {
+        guard drag.isDraggingSpace else { return }
+        drag.location = drag.toSidebar(windowLoc)
+        drag.updateSpaceTarget(in: spaces)
+    }
+
+    private func handleSpaceDragEnded() {
+        drag.longPressActive = false
+        guard drag.isDraggingSpace else { return }
+        commitSpaceDrop()
     }
 
     // MARK: - Commit space drop

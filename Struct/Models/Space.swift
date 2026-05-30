@@ -129,6 +129,15 @@ extension ContainerChild {
         case .project(let p): .project(p)
         }
     }
+
+    /// Swipe-selection identifier for this child — used by sidebar rows to
+    /// drive `SidebarSwipeSelection.matches` / `.toggle`.
+    var swipeKind: SwipeableContainerKind {
+        switch self {
+        case .list(let l):    .list(l)
+        case .project(let p): .project(p)
+        }
+    }
 }
 
 enum Containers {

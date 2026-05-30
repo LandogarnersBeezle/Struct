@@ -85,6 +85,20 @@ final class SidebarDragState {
     /// while still allowing normal scroll before the long-press threshold.
     var longPressActive: Bool = false
 
+    /// Origin of the sidebar viewport in `.global` (window) coordinates.
+    /// Captured by `ContainersSidebarView` via `SidebarOriginKey` and used to
+    /// translate UIKit recogniser locations (window coords) into the
+    /// `"sidebar"` named coordinate space.
+    var sidebarOriginInWindow: CGPoint = .zero
+
+    /// Converts a point in window coordinates into the `"sidebar"` named
+    /// coordinate space — matches the contract previously provided by
+    /// `DragGesture(coordinateSpace: .named("sidebar"))`.
+    func toSidebar(_ windowPoint: CGPoint) -> CGPoint {
+        CGPoint(x: windowPoint.x - sidebarOriginInWindow.x,
+                y: windowPoint.y - sidebarOriginInWindow.y)
+    }
+
     /// Keeps the floating card alive and visible during its fade-out after a
     /// drop.  Set alongside `dragging` in `begin()`; cleared with an easeOut
     /// animation in `end()` so the card fades independently from the layout
