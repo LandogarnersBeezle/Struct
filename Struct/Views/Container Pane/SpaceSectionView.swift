@@ -60,9 +60,13 @@ struct SpaceSectionView: View {
     let allSpaces: [Space]
     let onSelect:  (ContainerTarget) -> Void
 
-    @Environment(SidebarDragState.self)    private var drag
+    @Environment(SidebarDragState.self)      private var drag
     @Environment(SidebarSwipeSelection.self) private var swipeSelection
-    @Environment(\.modelContext)           private var context
+    @Environment(\.modelContext)             private var context
+
+    // MARK: Error state
+
+    @State private var saveError: DataError?
 
     @Query private var lists:    [List]
     @Query private var projects: [Project]
@@ -156,6 +160,7 @@ struct SpaceSectionView: View {
         .clipped()
         .animation(.spring(duration: 0.22, bounce: 0),
                    value: drag.draggingSpace?.persistentModelID)
+        .errorAlert($saveError)
     }
 
     // MARK: - Row view
@@ -163,6 +168,18 @@ struct SpaceSectionView: View {
     @ViewBuilder
     private func rowView(for child: ContainerChild) -> some View {
         let isGhosted = drag.dragging?.id == child.id
+        let openCount = child.openTaskCount
+        let typeLabel: String = {
+            switch child {
+            case .list: return NSLocalizedString("List", comment: "Container type")
+            case .project: return NSLocalizedString("Project", comment: "Container type")
+            }
+        }()
+        let accessibilityLabelText = openCount > 0
+            ? String(format: NSLocalizedString("%@, %@, %d open task%@", comment: "Accessibility label format: title, type, count, tasks"),
+                     child.title, typeLabel, openCount, openCount == 1 ? "" : "s")
+            : String(format: NSLocalizedString("%@, %@", comment: "Accessibility label format: title, type"),
+                     child.title, typeLabel)
 
         ContainerRowView(
             symbol:        child.symbol,
@@ -174,6 +191,7 @@ struct SpaceSectionView: View {
         // long-press-drag without competing with the ScrollView's pan.
         .sidebarRowInteraction(
             isHighlighted: swipeSelection.matches(child.swipeKind),
+            accessibilityLabel: accessibilityLabelText,
             onTap:            { handleTap(child) },
             onSwipeTriggered: { swipeSelection.toggle(child.swipeKind) },
             onDragBegan:      { handleDragBegan(child, at: $0) },
@@ -278,6 +296,12 @@ struct SpaceSectionView: View {
             Containers.repack(Containers.children(of: srcSpace))
         }
 
-        try? context.save()
+        do {
+            try context.saveOrThrow()
+        } catch let error as DataError {
+            saveError = error
+        } catch {
+            saveError = .saveFailed(error)
+        }
     }
 }

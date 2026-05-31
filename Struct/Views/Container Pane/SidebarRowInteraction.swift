@@ -37,6 +37,8 @@ extension View {
     /// `"sidebar"` named coordinate space contract.
     func sidebarRowInteraction(
         isHighlighted: Bool = false,
+        accessibilityLabel: String? = nil,
+        accessibilityHint: String? = nil,
         onTap: @escaping () -> Void = {},
         onSwipeTriggered: @escaping () -> Void = {},
         onDragBegan: @escaping (CGPoint) -> Void = { _ in },
@@ -44,12 +46,14 @@ extension View {
         onDragEnded: @escaping () -> Void = {}
     ) -> some View {
         modifier(SidebarRowInteractionModifier(
-            isHighlighted:    isHighlighted,
-            onTap:            onTap,
-            onSwipeTriggered: onSwipeTriggered,
-            onDragBegan:      onDragBegan,
-            onDragChanged:    onDragChanged,
-            onDragEnded:      onDragEnded
+            isHighlighted:       isHighlighted,
+            accessibilityLabel:  accessibilityLabel,
+            accessibilityHint:   accessibilityHint,
+            onTap:               onTap,
+            onSwipeTriggered:    onSwipeTriggered,
+            onDragBegan:         onDragBegan,
+            onDragChanged:       onDragChanged,
+            onDragEnded:         onDragEnded
         ))
     }
 }
@@ -60,27 +64,28 @@ extension View {
 /// selection background) and forwards UIKit gesture callbacks to the caller.
 struct SidebarRowInteractionModifier: ViewModifier {
 
-    let isHighlighted:    Bool
-    let onTap:            () -> Void
-    let onSwipeTriggered: () -> Void
-    let onDragBegan:      (CGPoint) -> Void
-    let onDragChanged:    (CGPoint) -> Void
-    let onDragEnded:      () -> Void
+    let isHighlighted:       Bool
+    let accessibilityLabel:  String?
+    let accessibilityHint:   String?
+    let onTap:               () -> Void
+    let onSwipeTriggered:    () -> Void
+    let onDragBegan:         (CGPoint) -> Void
+    let onDragChanged:       (CGPoint) -> Void
+    let onDragEnded:         () -> Void
 
     @State private var offset:    CGFloat = 0
     @State private var isPressed: Bool    = false
 
     func body(content: Content) -> some View {
-        content
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.accentColor.opacity(isHighlighted ? 0.10 : 0))
-                    .animation(.easeOut(duration: 0.2), value: isHighlighted)
-            }
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.primary.opacity(isPressed ? 0.08 : 0))
-            }
+        let pressBackground = RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color.primary.opacity(isPressed ? 0.08 : 0))
+        let highlightBackground = RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color.accentColor.opacity(isHighlighted ? 0.10 : 0))
+            .animation(.easeOut(duration: 0.2), value: isHighlighted)
+
+        return content
+            .background(highlightBackground)
+            .background(pressBackground)
             .scaleEffect(isPressed ? 0.97 : 1)
             .animation(.easeOut(duration: 0.12), value: isPressed)
             .offset(x: offset)
@@ -92,9 +97,16 @@ struct SidebarRowInteractionModifier: ViewModifier {
                     onSwipeEnded:    { _ in handleSwipeEnded() },
                     onDragBegan:     onDragBegan,
                     onDragChanged:   onDragChanged,
-                    onDragEnded:     onDragEnded
+                    onDragEnded:     onDragEnded,
+                    accessibilityLabel: accessibilityLabel,
+                    accessibilityHint:  accessibilityHint
                 )
             }
+            // VoiceOver hint for available gestures
+            .accessibilityHint(accessibilityHint ?? NSLocalizedString(
+                "Tap to open. Swipe left for options. Long press to reorder.",
+                comment: "Default accessibility hint for sidebar rows"
+            ))
     }
 
     // MARK: - Swipe rubber-band
@@ -138,17 +150,26 @@ struct SidebarGestureOverlay: UIViewRepresentable {
     var onDragChanged:   (CGPoint) -> Void
     var onDragEnded:     () -> Void
 
+    /// Accessibility label for the row (e.g., "Groceries, 4 open tasks")
+    var accessibilityLabel: String?
+
+    /// Accessibility hint describing available gestures
+    var accessibilityHint: String?
+
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    func makeUIView(context: Context) -> GestureHostView {
-        let v = GestureHostView()
+    func makeUIView(context: Context) -> AccessibilityGestureHostView {
+        let v = AccessibilityGestureHostView()
         v.coordinator = context.coordinator
         v.install()
         return v
     }
 
-    func updateUIView(_ view: GestureHostView, context: Context) {
+    func updateUIView(_ view: AccessibilityGestureHostView, context: Context) {
         context.coordinator.parent = self
+        // Update accessibility properties
+        view.rowAccessibilityLabel = accessibilityLabel
+        view.rowAccessibilityHint = accessibilityHint
     }
 
     // MARK: - Coordinator
@@ -191,13 +212,72 @@ struct SidebarGestureOverlay: UIViewRepresentable {
     }
 }
 
-// MARK: - GestureHostView
+// MARK: - AccessibilityGestureHostView
 
 /// Transparent UIView that hosts the three gesture recognisers and tracks
-/// raw touch state for the visual press-highlight.
-final class GestureHostView: UIView {
+/// raw touch state for the visual press-highlight. Also provides VoiceOver support.
+final class AccessibilityGestureHostView: UIView {
 
     weak var coordinator: SidebarGestureOverlay.Coordinator?
+
+    /// Accessibility label describing this row's content
+    var rowAccessibilityLabel: String? {
+        didSet {
+            accessibilityLabel = rowAccessibilityLabel
+        }
+    }
+
+    /// Accessibility hint describing available gestures
+    var rowAccessibilityHint: String? {
+        didSet {
+            accessibilityHint = rowAccessibilityHint
+        }
+    }
+
+    override var isAccessibilityElement: Bool {
+        get { true }
+        set { super.isAccessibilityElement = newValue }
+    }
+
+    override var accessibilityTraits: UIAccessibilityTraits {
+        get { .button }
+        set { super.accessibilityTraits = newValue }
+    }
+
+    /// Custom actions for VoiceOver
+    override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
+        get {
+            [
+                UIAccessibilityCustomAction(
+                    name: NSLocalizedString("Swipe left for options", comment: "Accessibility action"),
+                    target: self,
+                    selector: #selector(performSwipeAction)
+                ),
+                UIAccessibilityCustomAction(
+                    name: NSLocalizedString("Long press to reorder", comment: "Accessibility action"),
+                    target: self,
+                    selector: #selector(performDragAction)
+                )
+            ]
+        }
+        set { super.accessibilityCustomActions = newValue }
+    }
+
+    @objc private func performSwipeAction() -> Bool {
+        guard let parent = coordinator?.parent else { return false }
+        // Trigger swipe by calling the parent's callbacks
+        parent.onSwipeChanged(-25, 0)
+        parent.onSwipeEnded(-25)
+        return true
+    }
+
+    @objc private func performDragAction() -> Bool {
+        // For drag reordering, we need to notify the user that they should use
+        // the standard VoiceOver drag gestures (rotor set to "Drag and Drop")
+        UIAccessibility.post(notification: .announcement,
+                           argument: NSLocalizedString("Use two-finger drag to reorder", comment: "Accessibility instruction"))
+        return true
+    }
 
     func install() {
         guard let c = coordinator else { return }

@@ -53,6 +53,10 @@ struct ContainersSidebarView: View {
 
     @Environment(\.modelContext) private var modelContext
 
+    // MARK: Error state
+
+    @State private var saveError: DataError?
+
     // MARK: Drag state
 
     @State private var drag           = SidebarDragState()
@@ -63,13 +67,20 @@ struct ContainersSidebarView: View {
     var body: some View {
         // Inbox row — sits above the drag-enabled scroll area
         if let inbox {
+            let inboxOpenCount = inbox.items.filter { !$0.isCompleted }.count
+            let inboxAccessibilityLabel = inboxOpenCount > 0
+                ? String(format: NSLocalizedString("Inbox, %d open task%@", comment: "Inbox accessibility label"),
+                         inboxOpenCount, inboxOpenCount == 1 ? "" : "s")
+                : NSLocalizedString("Inbox, no open tasks", comment: "Inbox accessibility label")
             Button { onSelect(.list(inbox)) } label: {
                 ContainerRowView(symbol: "tray", title: inbox.title,
-                                 openTaskCount: inbox.items.filter { !$0.isCompleted }.count,
+                                 openTaskCount: inboxOpenCount,
                                  color: List.containerColor)
             }
             .buttonStyle(ContainerRowButtonStyle())
             .padding(5)
+            .accessibilityLabel(inboxAccessibilityLabel)
+            .accessibilityHint(NSLocalizedString("Tap to view inbox items", comment: "Inbox accessibility hint"))
         }
 
         // ZStack: scroll content behind + floating drag cards on top
@@ -156,6 +167,7 @@ struct ContainersSidebarView: View {
             .padding()
         }
         .sheet(item: $pendingCreate) { CreateContainerView(kind: $0) }
+        .errorAlert($saveError)
         // Dismiss any open action bar when a drag-and-drop begins.
         .onChange(of: drag.isDragging)      { _, on in if on { swipeSelection.clear() } }
         .onChange(of: drag.isDraggingSpace) { _, on in if on { swipeSelection.clear() } }
@@ -242,6 +254,12 @@ struct ContainersSidebarView: View {
     @ViewBuilder
     private func spaceHeader(for space: Space) -> some View {
         let isGhost = drag.draggingSpace?.persistentModelID == space.persistentModelID
+        let spaceOpenCount = space.items.filter { !$0.isCompleted }.count
+        let spaceAccessibilityLabel = spaceOpenCount > 0
+            ? String(format: NSLocalizedString("%@, Space, %d open task%@", comment: "Space accessibility label format"),
+                     space.name, spaceOpenCount, spaceOpenCount == 1 ? "" : "s")
+            : String(format: NSLocalizedString("%@, Space, no open tasks", comment: "Space accessibility label"),
+                     space.name)
         VStack(alignment: .leading, spacing: 0) {
             // Divider stays outside the interactive region — it belongs to the
             // section boundary, not to the row's hit target.
@@ -250,6 +268,7 @@ struct ContainersSidebarView: View {
                 .padding(.bottom, 10)
                 .sidebarRowInteraction(
                     isHighlighted: swipeSelection.matches(.space(space)),
+                    accessibilityLabel: spaceAccessibilityLabel,
                     onTap:            { handleSpaceTap(space) },
                     onSwipeTriggered: { swipeSelection.toggle(.space(space)) },
                     onDragBegan:      { handleSpaceDragBegan(space, at: $0) },
@@ -340,7 +359,13 @@ struct ContainersSidebarView: View {
         let idx = max(0, min(drag.spaceTargetIndex, ordered.count))
         ordered.insert(dragging, at: idx)
         for (i, space) in ordered.enumerated() { space.sortIndex = i }
-        try? modelContext.save()
+        do {
+            try modelContext.saveOrThrow()
+        } catch let error as DataError {
+            saveError = error
+        } catch {
+            saveError = .saveFailed(error)
+        }
     }
 
     // MARK: - Add menu

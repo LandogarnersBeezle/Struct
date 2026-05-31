@@ -44,6 +44,7 @@ struct CreateContainerView: View {
     @State private var name = ""
     @State private var selectedSpaceID: PersistentIdentifier?
     @State private var newSpaceName = ""
+    @State private var createError: DataError?
 
     var body: some View {
         NavigationStack {
@@ -72,6 +73,7 @@ struct CreateContainerView: View {
                     selectedSpaceID = spaces.first?.persistentModelID
                 }
             }
+            .errorAlert($createError)
         }
     }
 
@@ -121,7 +123,14 @@ struct CreateContainerView: View {
             let index = Containers.nextProjectSortIndex(in: space)
             modelContext.insert(Project(title: trimmedName, space: space, sortIndex: index))
         }
-        dismiss()
+        do {
+            try modelContext.saveOrThrow()
+            dismiss()
+        } catch let error as DataError {
+            createError = error
+        } catch {
+            createError = .saveFailed(error)
+        }
     }
 
     // Returns the space to attach a new List/Project to: either the picked

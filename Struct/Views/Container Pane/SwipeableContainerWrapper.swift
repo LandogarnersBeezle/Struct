@@ -69,7 +69,7 @@ enum SwipeableContainerKind {
 struct ContainerActionBar: View {
 
     @Environment(SidebarSwipeSelection.self) private var selection
-    @Environment(\.modelContext) private var context
+    @Environment(\.modelContext)             private var context
 
     // MARK: State
 
@@ -77,6 +77,7 @@ struct ContainerActionBar: View {
     @State private var renameText       = ""
     @State private var showDeleteDialog = false
     @State private var hasOpenTasks     = false
+    @State private var actionError: DataError?
 
     // MARK: Body
 
@@ -105,6 +106,10 @@ struct ContainerActionBar: View {
         } message: {
             if hasOpenTasks { Text("Some tasks are still open. Choose how to handle them.") }
         }
+        .errorAlert($actionError) {
+            // Clear selection when error is dismissed to reset state
+            selection.clear()
+        }
     }
 
     // MARK: - Button layout
@@ -112,6 +117,13 @@ struct ContainerActionBar: View {
     @ViewBuilder
     private func actionButton(_ label: String, icon: String, tint: Color,
                                action: @escaping () -> Void) -> some View {
+        let hint: String = {
+            switch label {
+            case "Rename": return NSLocalizedString("Change the name of this container", comment: "Rename button accessibility hint")
+            case "Delete": return NSLocalizedString("Remove this container", comment: "Delete button accessibility hint")
+            default: return ""
+            }
+        }()
         Button(action: action) {
             Label(label, systemImage: icon)
                 .fontWeight(.semibold)
@@ -122,6 +134,8 @@ struct ContainerActionBar: View {
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .foregroundStyle(tint)
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityHint(Text(hint))
     }
 
     // MARK: - Rename
@@ -140,8 +154,14 @@ struct ContainerActionBar: View {
         case .project(let p): p.title = trimmed; p.touch()
         case .space(let s):   s.name  = trimmed; s.touch()
         }
-        try? context.save()
-        selection.clear()
+        do {
+            try context.saveOrThrow()
+            selection.clear()
+        } catch let error as DataError {
+            actionError = error
+        } catch {
+            actionError = .saveFailed(error)
+        }
     }
 
     // MARK: - Delete
@@ -197,7 +217,7 @@ struct ContainerActionBar: View {
         List.ensureInbox(in: context)
         let slug = List.inboxSlug
         let desc = FetchDescriptor<List>(predicate: #Predicate { $0.slug == slug })
-        return try? context.fetch(desc).first
+        return try? context.fetchOrThrow(desc).first
     }
 
     private func deleteList(_ list: List, moveToInbox: Bool) {
@@ -205,7 +225,14 @@ struct ContainerActionBar: View {
             list.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) }
         }
         context.delete(list)
-        try? context.save()
+        do {
+            try context.saveOrThrow()
+            selection.clear()
+        } catch let error as DataError {
+            actionError = error
+        } catch {
+            actionError = .deleteFailed(error)
+        }
     }
 
     private func deleteProject(_ project: Project, moveToInbox: Bool) {
@@ -213,7 +240,14 @@ struct ContainerActionBar: View {
             project.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) }
         }
         context.delete(project)
-        try? context.save()
+        do {
+            try context.saveOrThrow()
+            selection.clear()
+        } catch let error as DataError {
+            actionError = error
+        } catch {
+            actionError = .deleteFailed(error)
+        }
     }
 
     private func deleteSpace(_ space: Space, moveToInbox: Bool) {
@@ -225,6 +259,14 @@ struct ContainerActionBar: View {
         // Space.lists uses deleteRule .nullify — delete explicitly to avoid orphans.
         for list in space.lists { context.delete(list) }
         context.delete(space)
-        try? context.save()
+        do {
+            try context.saveOrThrow()
+            selection.clear()
+        } catch let error as DataError {
+            actionError = error
+        } catch {
+            actionError = .deleteFailed(error)
+        }
     }
+
 }
