@@ -90,6 +90,25 @@ final class SidebarDragState {
     /// translate UIKit recogniser locations (window coords) into the
     /// `"sidebar"` named coordinate space.
     var sidebarOriginInWindow: CGPoint = .zero
+    
+    // MARK: - Auto-Scroll State
+    
+    /// Current vertical scroll offset of the sidebar, updated by AutoScrollOverlay
+    /// during auto-scroll operations. This allows drop-target calculations to
+    /// account for the scroll position when the content is being auto-scrolled.
+    var scrollOffset: CGFloat = 0
+    
+    /// Called by AutoScrollOverlay when auto-scroll begins.
+    /// Can be used for haptic feedback or other side effects.
+    func didStartAutoScroll() {
+        // Optional: Add haptic feedback
+        // UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    /// Called by AutoScrollOverlay when auto-scroll ends.
+    func didStopAutoScroll() {
+        // Optional: Cleanup or reset state
+    }
 
     /// Converts a point in window coordinates into the `"sidebar"` named
     /// coordinate space — matches the contract previously provided by

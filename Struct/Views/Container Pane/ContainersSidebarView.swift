@@ -138,10 +138,22 @@ struct ContainersSidebarView: View {
         // We use an overlay instead of background to ensure the GeometryReader
         // is laid out correctly and the preference propagates properly.
         .overlay {
+            // Auto-scroll overlay: enables automatic scrolling when dragging near edges
+            // Placed first (behind) so it doesn't interfere with the GeometryReader
+            AutoScrollOverlay(
+                dragState: drag,
+                contentHeight: { [spaces, inbox] in
+                    self.estimateContentHeight(spaces: spaces, inbox: inbox)
+                }
+            )
+        }
+        .overlay {
+            // Sidebar origin capture for coordinate conversion
+            // Placed second (on top) to ensure proper preference propagation
             GeometryReader { geo in
                 Color.clear
                     .preference(key: SidebarOriginKey.self,
-                                value: geo.frame(in: .global).origin)
+                               value: geo.frame(in: .global).origin)
             }
         }
         // Disable scrolling once a long press fires so the drag-for-reorder
@@ -382,5 +394,43 @@ struct ContainersSidebarView: View {
                 .foregroundStyle(.white)
                 .shadow(radius: 4, y: 2)
         }
+    }
+    
+    // MARK: - Content Height Estimation
+    
+    /// Estimates the total height of the scroll view content for auto-scroll
+    /// boundary calculations. This is an approximation based on known row
+    /// heights and item counts.
+    private func estimateContentHeight(spaces: [Space], inbox: List?) -> CGFloat {
+        // Approximate heights
+        let rowHeight: CGFloat = 44      // Container row height
+        let headerHeight: CGFloat = 44   // Space header height
+        let sectionSpacing: CGFloat = 8  // Spacing after each section
+        let inboxHeight: CGFloat = 54    // Inbox row height (with padding)
+        
+        var total: CGFloat = 0
+        
+        // Add inbox height if present
+        if inbox != nil {
+            total += inboxHeight
+        }
+        
+        // Add height for each space section
+        for space in spaces {
+            // Space header
+            total += headerHeight
+            
+            // Space content (container rows)
+            let children = Containers.children(of: space).count
+            total += CGFloat(children) * rowHeight
+            
+            // Section spacing
+            total += sectionSpacing
+        }
+        
+        // Add padding for bottom safe area inset
+        total += 80
+        
+        return total
     }
 }
