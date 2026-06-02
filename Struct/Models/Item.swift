@@ -12,6 +12,7 @@ enum ItemParent {
     case space(Space)
     case project(Project)
     case list(List)
+    case taskSection(TaskSection)
 }
 
 @Model
@@ -40,6 +41,7 @@ final class Item {
     private(set) var space: Space?
     private(set) var project: Project?
     private(set) var list: List?
+    private(set) var taskSection: TaskSection?
 
     // Future hooks — enable when tags / subtasks land:
     //
@@ -74,6 +76,7 @@ final class Item {
         self.space = nil
         self.project = nil
         self.list = nil
+        self.taskSection = nil
         if let parent {
             applyParent(parent)
         }
@@ -92,11 +95,13 @@ final class Item {
     private func applyParent(_ parent: ItemParent) {
         switch parent {
         case .space(let s):
-            self.space = s; self.project = nil; self.list = nil
+            self.space = s; self.project = nil; self.list = nil; self.taskSection = nil
         case .project(let p):
-            self.space = nil; self.project = p; self.list = nil
+            self.space = nil; self.project = p; self.list = nil; self.taskSection = nil
         case .list(let l):
-            self.space = nil; self.project = nil; self.list = l
+            self.space = nil; self.project = nil; self.list = l; self.taskSection = nil
+        case .taskSection(let s):
+            self.space = nil; self.project = nil; self.list = nil; self.taskSection = s
         }
     }
 
@@ -105,7 +110,7 @@ final class Item {
     // `attachToInboxIfNeeded(in:)`.
     private func assertSingleParent() {
         #if DEBUG
-        let count = [space != nil, project != nil, list != nil].filter { $0 }.count
+        let count = [space != nil, project != nil, list != nil, taskSection != nil].filter { $0 }.count
         assert(count <= 1, "Item has multiple parents set simultaneously")
         #endif
     }
@@ -114,7 +119,7 @@ final class Item {
     // been assigned (explicitly or via Inbox fallback).
     private func assertExactlyOneParent() {
         #if DEBUG
-        let count = [space != nil, project != nil, list != nil].filter { $0 }.count
+        let count = [space != nil, project != nil, list != nil, taskSection != nil].filter { $0 }.count
         assert(count == 1, "Item must have exactly one parent")
         #endif
     }
@@ -149,7 +154,7 @@ extension Item {
     // No-op for items that already have a parent. Relies on
     // `List.ensureInbox(in:)` having run at app start.
     func attachToInboxIfNeeded(in context: ModelContext) {
-        guard space == nil, project == nil, list == nil else { return }
+        guard space == nil, project == nil, list == nil, taskSection == nil else { return }
         let inboxRaw = ListKind.inbox.rawValue
         let descriptor = FetchDescriptor<List>(
             predicate: #Predicate { $0.kindRaw == inboxRaw }

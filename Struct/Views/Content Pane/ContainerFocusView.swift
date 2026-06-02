@@ -236,7 +236,7 @@ struct ContainerFocusView: View {
 
 #Preview {
     let container = try! ModelContainer(
-        for: Space.self, Project.self, List.self, Item.self,
+        for: Space.self, Project.self, List.self, Item.self, TaskSection.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let context = container.mainContext

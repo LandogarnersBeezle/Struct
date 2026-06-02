@@ -30,6 +30,9 @@ final class Project {
     @Relationship(deleteRule: .cascade, inverse: \Item.project)
     var items: [Item] = []
 
+    @Relationship(deleteRule: .nullify, inverse: \TaskSection.project)
+    var taskSections: [TaskSection] = []
+
     init(title: String,
          notes: String = "",
          space: Space,

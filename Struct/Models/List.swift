@@ -33,6 +33,9 @@ final class List {
     @Relationship(deleteRule: .cascade, inverse: \Item.list)
     var items: [Item] = []
 
+    @Relationship(deleteRule: .nullify, inverse: \TaskSection.list)
+    var taskSections: [TaskSection] = []
+
     var kind: ListKind {
         get { ListKind(rawValue: kindRaw) ?? .user }
         set { kindRaw = newValue.rawValue }

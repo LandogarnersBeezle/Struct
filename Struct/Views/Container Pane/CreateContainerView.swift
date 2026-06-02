@@ -88,12 +88,14 @@ struct CreateContainerView: View {
                 Text("No spaces yet — a new one will be created.")
             }
         } else {
-            Section("Space") {
+            Section {
                 Picker("Space", selection: $selectedSpaceID) {
                     ForEach(spaces) { space in
                         Text(space.name).tag(Optional(space.persistentModelID))
                     }
                 }
+            } header: {
+                Text("Space")
             }
         }
     }

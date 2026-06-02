@@ -37,7 +37,7 @@ struct StructApp: App {
     }
 
     private static func makeContainer() throws -> ModelContainer {
-        try ModelContainer(for: Space.self, Project.self, List.self, Item.self)
+        try ModelContainer(for: Space.self, Project.self, List.self, Item.self, TaskSection.self)
     }
 
     #if DEBUG

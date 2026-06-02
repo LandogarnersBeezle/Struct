@@ -36,6 +36,9 @@ final class Space {
     @Relationship(deleteRule: .nullify, inverse: \Item.space)
     var items: [Item] = []
 
+    @Relationship(deleteRule: .nullify, inverse: \TaskSection.space)
+    var taskSections: [TaskSection] = []
+
     init(name: String,
          symbolName: String = "square.grid.2x2",
          colorHex: String? = nil,
