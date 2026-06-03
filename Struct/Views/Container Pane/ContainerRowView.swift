@@ -44,15 +44,16 @@ struct ContainerRowView: View {
             if openTaskCount > 0 {
                 Text("\(openTaskCount)")
                     .foregroundStyle(.secondary)
-                    .padding(5)
-                    .background(content: {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.secondary.opacity(0.1))
-                    })
+                    .font(.caption)
+                    // .padding(2)
+                    // .background(content: {
+                    //     RoundedRectangle(cornerRadius: 4)
+                    //         .fill(Color.secondary.opacity(0.1))
+                    // })
                     .padding(.trailing, 5)
             }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 5)
         .contentShape(Rectangle())
         .fontWeight(.semibold)
     }

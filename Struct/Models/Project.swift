@@ -12,7 +12,7 @@ import SwiftUI
 @Model
 final class Project {
     /// The canonical tint colour for Project containers throughout the app.
-    static let containerColor: Color = .purple
+    static let containerColor: Color = .blue
     var title: String
     var notes: String
     var isCompleted: Bool {

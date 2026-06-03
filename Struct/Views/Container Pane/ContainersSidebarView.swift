@@ -249,12 +249,13 @@ struct ContainersSidebarView: View {
             let openCount = space.items.filter { !$0.isCompleted }.count
             if openCount > 0 {
                 Text("\(openCount)")
-                    .foregroundStyle(.secondary)
-                    .padding(5)
-                    .background {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.secondary.opacity(0.1))
-                    }
+                    .foregroundStyle(.tertiary)
+                    .font(.caption)
+                    // .padding(2)
+                    // .background {
+                    //     RoundedRectangle(cornerRadius: 4)
+                    //         .fill(Color.secondary.opacity(0.1))
+                    // }
                     .padding(.trailing, 5)
             }
         }

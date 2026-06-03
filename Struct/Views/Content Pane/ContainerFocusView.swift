@@ -55,7 +55,7 @@ extension ContainerTarget {
 
 struct ContainerFocusView: View {
     let target: ContainerTarget
-    /// Called when the user selects a container from the search bar.
+    /// Called when the user selects a container from the search/filter view.
     /// The owner should replace the navigation path with the new target so
     /// the back button returns to the root rather than the previous detail view.
     var onNavigate: (ContainerTarget) -> Void = { _ in }
@@ -70,6 +70,7 @@ struct ContainerFocusView: View {
 
     @State private var searchText: String = ""
     @FocusState private var isSearchFocused: Bool
+    @State private var showFilterView: Bool = false
 
     // All containers in the same order as ContainersSidebarView:
     // Inbox → (Space → lists → projects) per space.
@@ -99,34 +100,103 @@ struct ContainerFocusView: View {
         return allContainers.filter { $0.target.title.localizedCaseInsensitiveContains(q) }
     }
 
+    /// The symbol name for a given container target.
+    private func symbol(for target: ContainerTarget) -> String {
+        switch target {
+        case .space(let space):
+            return space.symbolName
+        case .list(let list):
+            return list.kind == .inbox ? "tray" : "list.bullet"
+        case .project:
+            return "folder"
+        }
+    }
+
+    /// The color for a given container target.
+    private func color(for target: ContainerTarget) -> Color {
+        switch target {
+        case .space:
+            return Space.containerColor
+        case .list:
+            return List.containerColor
+        case .project:
+            return Project.containerColor
+        }
+    }
+
+    /// The display title for the current container, showing hierarchy if inside a space.
+    /// Returns a view with icons and text.
+    @ViewBuilder
+    private var hierarchicalTitleView: some View {
+        switch target {
+        case .space(let space):
+            HStack(spacing: 4) {
+                Image(systemName: space.symbolName)
+                    .foregroundStyle(Space.containerColor)
+                Text(space.name)
+            }
+        case .list(let list):
+            if let space = list.space {
+                HStack(spacing: 4) {
+                    Image(systemName: space.symbolName)
+                        .foregroundStyle(Space.containerColor)
+                    Text(space.name)
+                    Text("/")
+                        .foregroundStyle(.secondary)
+                    Image(systemName: list.kind == .inbox ? "tray" : "list.bullet")
+                        .foregroundStyle(List.containerColor)
+                    Text(list.title)
+                }
+            } else {
+                HStack(spacing: 4) {
+                    Image(systemName: list.kind == .inbox ? "tray" : "list.bullet")
+                        .foregroundStyle(List.containerColor)
+                    Text(list.title)
+                }
+            }
+        case .project(let project):
+            HStack(spacing: 4) {
+                Image(systemName: project.space.symbolName)
+                    .foregroundStyle(Space.containerColor)
+                Text(project.space.name)
+                Text("/")
+                    .foregroundStyle(.secondary)
+                Image(systemName: "folder")
+                    .foregroundStyle(Project.containerColor)
+                Text(project.title)
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
 
-            // MARK: Row 1 — back button · search bar · menu button
+            // MARK: Row 1 — back button · container title · menu button
             HStack(spacing: 8) {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
                 }
 
-                // Search bar
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Search", text: $searchText)
-                        .focused($isSearchFocused)
-                        .submitLabel(.done)
-                        .onSubmit { isSearchFocused = false }
-                    if !searchText.isEmpty {
-                        Button { searchText = "" } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
+                // Container title — clickable to toggle filter view
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showFilterView.toggle()
                     }
+                } label: {
+                    HStack(spacing: 4) {
+                        hierarchicalTitleView
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .fontWeight(.semibold)
+                        Image(systemName: "chevron.down")
+                            .font(.caption)
+                            .rotationEffect(.degrees(showFilterView ? 180 : 0))
+                    }
+                    .foregroundStyle(.primary)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(Color(UIColor.tertiarySystemFill),
-                            in: RoundedRectangle(cornerRadius: 8))
+                .buttonStyle(.plain)
+
+                Spacer()
 
                 // Menu button — placeholder, no functionality yet
                 Button { } label: {
@@ -137,21 +207,9 @@ struct ContainerFocusView: View {
             .padding(.vertical, 12)
             .padding(.bottom, 8)
 
-            // MARK: Row 2 — container title, leading-aligned
-            HStack(spacing: 6) {
-                Image(systemName: target.symbol)
-                    .foregroundStyle(target.color)
-                Text(target.title)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.bottom, 12)
-
             Divider()
 
-            // MARK: Content + search dropdown overlay
+            // MARK: Content + filter view overlay
             ZStack(alignment: .top) {
                 // Regular content
                 Group {
@@ -172,14 +230,40 @@ struct ContainerFocusView: View {
                         }
                     }
                 }
-                // Search results dropdown — floats above the content
-                if isSearchFocused {
+
+                // Filter view — animated overlay in a distinguishable frame
+                if showFilterView {
                     VStack(spacing: 0) {
+                        // Search field inside the filter view
+                        HStack(spacing: 6) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(.secondary)
+                            TextField("Filter containers", text: $searchText)
+                                .focused($isSearchFocused)
+                                .submitLabel(.done)
+                                .onSubmit { isSearchFocused = false }
+                            if !searchText.isEmpty {
+                                Button { searchText = "" } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color(UIColor.tertiarySystemFill),
+                                    in: RoundedRectangle(cornerRadius: 8))
+                        .focused($isSearchFocused)
+
+                        // Filter results
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 0) {
                                 ForEach(filteredContainers, id: \.target) { entry in
                                     Button {
-                                        isSearchFocused = false
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            showFilterView = false
+                                            isSearchFocused = false
+                                        }
                                         onNavigate(entry.target)
                                     } label: {
                                         HStack(spacing: 8) {
@@ -200,15 +284,25 @@ struct ContainerFocusView: View {
                             }
                         }
                         .frame(maxHeight: 240)
-                        Divider()
                     }
-                    .background(Color(UIColor.systemBackground))
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(UIColor.systemBackground))
+                            .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
+                    )
+                    .padding(.horizontal)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.95).combined(with: .opacity),
+                        removal: .scale(scale: 0.95).combined(with: .opacity)
+                    ))
                 }
             }
+
             // Swipe from the left edge to go back (mirrors the back button).
             // Attaching to the ZStack (content area only) means the overlay strip
             // sits above the ScrollView — so it wins the gesture against UIScrollView's
-            // pan recogniser — while leaving the header row (back button, search bar)
+            // pan recogniser — while leaving the header row (back button, title)
             // completely uncovered.
             .overlay(alignment: .leading) {
                 Color.clear
@@ -227,9 +321,23 @@ struct ContainerFocusView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        // Dismiss search when tapping outside the search bar
+        // Handle tap outside to dismiss filter view
         .onTapGesture {
-            if isSearchFocused { isSearchFocused = false }
+            if showFilterView {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showFilterView = false
+                    isSearchFocused = false
+                    searchText = ""
+                }
+            }
+        }
+        // Auto-focus text field when filter view appears
+        .onChange(of: showFilterView) { _, newValue in
+            if newValue {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isSearchFocused = true
+                }
+            }
         }
     }
 }
@@ -244,7 +352,7 @@ struct ContainerFocusView: View {
 
     let space = Space(name: "Personal", sortIndex: 0)
     context.insert(space)
-    let apartment = List(title: "Meetings with a lot of attendees that have a lot of work to do", space: space, sortIndex: 0)
+    let apartment = List(title: "Meetings", space: space, sortIndex: 0)
     context.insert(apartment)
 
     Item.create(in: context, title: "Book moving truck",
