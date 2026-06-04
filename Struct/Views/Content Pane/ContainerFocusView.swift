@@ -54,6 +54,19 @@ struct ContainerFocusView: View {
         return result
     }
 
+    // MARK: - Grouped Content
+
+    /// Computed grouped content for the current target
+    private var groupedContent: (directItems: ContainerFocusViewModel.GroupedItems, sectionGroups: [ContainerFocusViewModel.SectionGroup]) {
+        viewModel.groupedContent(for: target)
+    }
+
+    /// Child container groups for Space targets
+    private var childContainerGroups: [ContainerFocusViewModel.ChildContainerGroup] {
+        guard case .space(let space) = target else { return [] }
+        return viewModel.childContainerGroups(for: space)
+    }
+
     // MARK: - Back Button
 
     private var backButton: some View {
@@ -109,20 +122,26 @@ struct ContainerFocusView: View {
     @ViewBuilder
     private var contentView: some View {
         Group {
-            if target.items.isEmpty {
-                ContentUnavailableView(
-                    "No items",
-                    systemImage: target.symbol,
-                    description: Text("Items added to this container will appear here.")
-                )
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(target.items) { item in
-                            ItemRowView(item: item)
-                        }
-                    }
-                    .padding()
+            switch target {
+            case .space:
+                if groupedContent.directItems.isEmpty && groupedContent.sectionGroups.isEmpty && childContainerGroups.isEmpty {
+                    ContentUnavailableView(
+                        "No items",
+                        systemImage: target.symbol,
+                        description: Text("Items added to this space will appear here.")
+                    )
+                } else {
+                    ContainerFocusListView(target: target, viewModel: viewModel)
+                }
+            case .list, .project:
+                if groupedContent.directItems.isEmpty && groupedContent.sectionGroups.isEmpty {
+                    ContentUnavailableView(
+                        "No items",
+                        systemImage: target.symbol,
+                        description: Text("Items added to this container will appear here.")
+                    )
+                } else {
+                    ContainerFocusListView(target: target, viewModel: viewModel)
                 }
             }
         }
@@ -192,29 +211,61 @@ struct ContainerFocusView: View {
     let context = container.mainContext
     List.ensureInbox(in: context)
 
+    // Create a Space with comprehensive test data
     let space = Space(name: "Personal", sortIndex: 0)
     context.insert(space)
-    let apartment = List(title: "Meetings", space: space, sortIndex: 0)
-    context.insert(apartment)
-
-    Item.create(in: context, title: "Book moving truck",
-                notes: "Compare at least three quotes before booking.",
-                doDate: .now.addingTimeInterval(86_400 * 2),
-                dueDate: .now.addingTimeInterval(86_400 * 7),
-                sortIndex: 0, parent: .list(apartment))
-    Item.create(in: context, title: "Pack kitchen",
-                doDate: .now.addingTimeInterval(86_400 * 5),
-                sortIndex: 1, parent: .list(apartment))
-    Item.create(in: context, title: "Submit change-of-address form",
-                dueDate: .now.addingTimeInterval(-86_400),   // overdue
-                sortIndex: 2, parent: .list(apartment))
-
-    let done = Item.create(in: context, title: "Forward mail",
-                           sortIndex: 3, parent: .list(apartment))
-    done.isCompleted = true
+    
+    // Direct tasks in space (not in a section)
+    Item.create(in: context, title: "Space task 1 (unscheduled)", sortIndex: 0, parent: .space(space))
+    Item.create(in: context, title: "Space task 2 (unscheduled)", sortIndex: 1, parent: .space(space))
+    Item.create(in: context, title: "Space task 3 (scheduled)", doDate: .now.addingTimeInterval(86_400), sortIndex: 2, parent: .space(space))
+    Item.create(in: context, title: "Space task 4 (scheduled)", doDate: .now.addingTimeInterval(86_400 * 2), sortIndex: 3, parent: .space(space))
+    
+    // Task section directly in space
+    let spaceSection = TaskSection(title: "Space Section", parent: .space(space))
+    context.insert(spaceSection)
+    Item.create(in: context, title: "Section task 1 (unscheduled)", sortIndex: 0, parent: .taskSection(spaceSection))
+    Item.create(in: context, title: "Section task 2 (unscheduled)", sortIndex: 1, parent: .taskSection(spaceSection))
+    Item.create(in: context, title: "Section task 3 (scheduled)", doDate: .now.addingTimeInterval(86_400 * 3), sortIndex: 2, parent: .taskSection(spaceSection))
+    
+    // Create a List within the space
+    let list = List(title: "Groceries", space: space, sortIndex: 0)
+    context.insert(list)
+    
+    // Direct tasks in list
+    Item.create(in: context, title: "Buy milk", sortIndex: 0, parent: .list(list))
+    Item.create(in: context, title: "Buy eggs", sortIndex: 1, parent: .list(list))
+    Item.create(in: context, title: "Buy bread (scheduled)", doDate: .now.addingTimeInterval(86_400), sortIndex: 2, parent: .list(list))
+    
+    // Task section in list
+    let listSection = TaskSection(title: "Weekly Shopping", parent: .list(list))
+    context.insert(listSection)
+    Item.create(in: context, title: "Apples", sortIndex: 0, parent: .taskSection(listSection))
+    Item.create(in: context, title: "Bananas", sortIndex: 1, parent: .taskSection(listSection))
+    Item.create(in: context, title: "Oranges (scheduled)", doDate: .now.addingTimeInterval(86_400 * 4), sortIndex: 2, parent: .taskSection(listSection))
+    
+    // Create a Project within the space
+    let project = Project(title: "Home Renovation", space: space, sortIndex: 1)
+    context.insert(project)
+    
+    // Direct tasks in project
+    Item.create(in: context, title: "Choose paint colors", sortIndex: 0, parent: .project(project))
+    Item.create(in: context, title: "Get contractor quotes", sortIndex: 1, parent: .project(project))
+    Item.create(in: context, title: "Schedule inspection (scheduled)", doDate: .now.addingTimeInterval(86_400 * 5), sortIndex: 2, parent: .project(project))
+    
+    // Task section in project
+    let projectSection = TaskSection(title: "Kitchen Remodel", parent: .project(project))
+    context.insert(projectSection)
+    Item.create(in: context, title: "Demolish old cabinets", sortIndex: 0, parent: .taskSection(projectSection))
+    Item.create(in: context, title: "Install new countertops", sortIndex: 1, parent: .taskSection(projectSection))
+    Item.create(in: context, title: "Install backsplash (scheduled)", doDate: .now.addingTimeInterval(86_400 * 6), sortIndex: 2, parent: .taskSection(projectSection))
+    
+    // Create another list with no tasks (to test empty state)
+    let emptyList = List(title: "Empty List", space: space, sortIndex: 2)
+    context.insert(emptyList)
 
     return NavigationStack {
-        ContainerFocusView(target: .list(apartment))
+        ContainerFocusView(target: .space(space))
     }
     .modelContainer(container)
 }

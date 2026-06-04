@@ -63,7 +63,6 @@ struct ItemRowView: View {
             Spacer(minLength: 0)
         }
         .padding(12)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
