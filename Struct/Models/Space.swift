@@ -66,6 +66,55 @@ extension Space {
     }
 }
 
+// MARK: - ContainerTarget
+
+// Type-erased navigation target. `PersistentModel` is `Hashable`, so the
+// enum derives `Hashable` automatically — usable directly as a
+// `NavigationLink` value.
+enum ContainerTarget: Hashable {
+    case space(Space)
+    case project(Project)
+    case list(List)
+}
+
+extension ContainerTarget {
+    var title: String {
+        switch self {
+        case .space(let s): s.name
+        case .project(let p): p.title
+        case .list(let l): l.title
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .space(let s): s.symbolName
+        case .project: "folder"
+        case .list(let l): l.kind == .inbox ? "tray" : "list.bullet"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .space:   Space.containerColor
+        case .list:    List.containerColor
+        case .project: Project.containerColor
+        }
+    }
+
+    var items: [Item] {
+        let raw: [Item]
+        switch self {
+        case .space(let s): raw = s.items
+        case .project(let p): raw = p.items
+        case .list(let l): raw = l.items
+        }
+        return raw.sorted { $0.sortIndex < $1.sortIndex }
+    }
+}
+
+// MARK: - ContainerChild
+
 // Type-erased child of a Space. After the unified-sortIndex migration both
 // Lists and Projects share a single ordering namespace per Space; the UI
 // sorts them together by `sortIndex` and may freely interleave them.
