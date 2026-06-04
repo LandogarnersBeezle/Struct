@@ -100,30 +100,6 @@ struct ContainerFocusView: View {
         return allContainers.filter { $0.target.title.localizedCaseInsensitiveContains(q) }
     }
 
-    /// The symbol name for a given container target.
-    private func symbol(for target: ContainerTarget) -> String {
-        switch target {
-        case .space(let space):
-            return space.symbolName
-        case .list(let list):
-            return list.kind == .inbox ? "tray" : "list.bullet"
-        case .project:
-            return "folder"
-        }
-    }
-
-    /// The color for a given container target.
-    private func color(for target: ContainerTarget) -> Color {
-        switch target {
-        case .space:
-            return Space.containerColor
-        case .list:
-            return List.containerColor
-        case .project:
-            return Project.containerColor
-        }
-    }
-
     /// The display title for the current container, showing hierarchy if inside a space.
     /// Returns a view with icons and text.
     @ViewBuilder
@@ -179,7 +155,7 @@ struct ContainerFocusView: View {
 
                 // Container title — clickable to toggle filter view
                 Button {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8, blendDuration: 0)) {
                         showFilterView.toggle()
                     }
                 } label: {
@@ -233,77 +209,16 @@ struct ContainerFocusView: View {
 
                 // Filter view — animated overlay in a distinguishable frame
                 if showFilterView {
-                    VStack(spacing: 0) {
-                        // Search field inside the filter view
-                        HStack(spacing: 6) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundStyle(.secondary)
-                            TextField("Filter containers", text: $searchText)
-                                .focused($isSearchFocused)
-                                .submitLabel(.done)
-                                .onSubmit { isSearchFocused = false }
-                            if !searchText.isEmpty {
-                                Button { searchText = "" } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Color(UIColor.tertiarySystemFill),
-                                    in: RoundedRectangle(cornerRadius: 8))
-                        .focused($isSearchFocused)
-
-                        // Filter results
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                ForEach(filteredContainers, id: \.target) { entry in
-                                    Button {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            showFilterView = false
-                                            isSearchFocused = false
-                                        }
-                                        onNavigate(entry.target)
-                                    } label: {
-                                        HStack(spacing: 8) {
-                                            Image(systemName: entry.target.symbol)
-                                                .frame(width: 20)
-                                                .foregroundStyle(entry.target.color)
-                                            Text(entry.target.title)
-                                                .lineLimit(1)
-                                            Spacer()
-                                        }
-                                        .padding(.horizontal)
-                                        .padding(.vertical, 10)
-                                        .padding(.leading, entry.isChild ? 16 : 0)
-                                    }
-                                    .buttonStyle(.plain)
-                                    Divider().padding(.leading, entry.isChild ? 60 : 44)
-                                }
-                            }
-                        }
-                        .frame(maxHeight: 240)
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(UIColor.systemBackground))
-                            .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
-                    )
-                    .padding(.horizontal)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.95).combined(with: .opacity),
-                        removal: .scale(scale: 0.95).combined(with: .opacity)
-                    ))
+                    filterViewContent
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.95).combined(with: .opacity),
+                            removal: .scale(scale: 0.95).combined(with: .opacity)
+                        ))
                 }
             }
+            .animation(.spring(response: 0.25, dampingFraction: 0.8, blendDuration: 0), value: showFilterView)
 
             // Swipe from the left edge to go back (mirrors the back button).
-            // Attaching to the ZStack (content area only) means the overlay strip
-            // sits above the ScrollView — so it wins the gesture against UIScrollView's
-            // pan recogniser — while leaving the header row (back button, title)
-            // completely uncovered.
             .overlay(alignment: .leading) {
                 Color.clear
                     .frame(width: 30)
@@ -321,23 +236,110 @@ struct ContainerFocusView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        // Handle tap outside to dismiss filter view
+    }
+
+    // MARK: - Filter View Components
+
+    @ViewBuilder
+    private var filterViewContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Filter view card attached to the top
+            VStack(spacing: 0) {
+                filterSearchField
+
+                filterResults
+                    .frame(maxHeight: 240)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(UIColor.systemBackground))
+                    .shadow(color: Color.black.opacity(0.2), radius: 16, x: 0, y: 8)
+            )
+            .padding(.horizontal)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(
+            // Dimming background that catches taps outside the filter view
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+        )
         .onTapGesture {
-            if showFilterView {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showFilterView = false
-                    isSearchFocused = false
-                    searchText = ""
+            closeFilterView()
+        }
+        .onAppear {
+            // Focus the search field after a tiny delay to ensure smooth animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                isSearchFocused = true
+            }
+        }
+    }
+
+    private var filterSearchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Filter containers", text: $searchText)
+                .focused($isSearchFocused)
+                .submitLabel(.done)
+                .onSubmit { isSearchFocused = false }
+            if !searchText.isEmpty {
+                Button {
+                    withAnimation {
+                        searchText = ""
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(UIColor.tertiarySystemFill),
+                    in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var filterResults: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(filteredContainers, id: \.target) { entry in
+                    Button {
+                        closeFilterView()
+                        onNavigate(entry.target)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: entry.target.symbol)
+                                .frame(width: 20)
+                                .foregroundStyle(entry.target.color)
+                            Text(entry.target.title)
+                                .lineLimit(1)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .padding(.leading, entry.isChild ? 16 : 0)
+                    }
+                    .buttonStyle(.plain)
+                    Divider()
+                        .padding(.leading, entry.isChild ? 60 : 44)
+                        .padding(.trailing, 12)
                 }
             }
         }
-        // Auto-focus text field when filter view appears
-        .onChange(of: showFilterView) { _, newValue in
-            if newValue {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    isSearchFocused = true
-                }
-            }
+    }
+
+    private func closeFilterView() {
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8, blendDuration: 0)) {
+            showFilterView = false
+            isSearchFocused = false
+            searchText = ""
         }
     }
 }
