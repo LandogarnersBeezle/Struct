@@ -25,12 +25,13 @@ struct ContainerFocusView: View {
 
     @Query(sort: \Space.sortIndex)
     private var spaces: [Space]
-
+    
     init(target: ContainerTarget, onNavigate: @escaping (ContainerTarget) -> Void = { _ in }) {
         self.target = target
         self.onNavigate = onNavigate
         _viewModel = StateObject(wrappedValue: ContainerFocusViewModel())
     }
+
 
     // MARK: - Container Data
 
@@ -124,24 +125,44 @@ struct ContainerFocusView: View {
         Group {
             switch target {
             case .space:
-                if groupedContent.directItems.isEmpty && groupedContent.sectionGroups.isEmpty && childContainerGroups.isEmpty {
+                if groupedContent.directItems.isEmpty && groupedContent.sectionGroups.isEmpty && childContainerGroups.isEmpty && !viewModel.showingTaskCreationCard {
                     ContentUnavailableView(
                         "No items",
                         systemImage: target.symbol,
                         description: Text("Items added to this space will appear here.")
                     )
                 } else {
-                    ContainerFocusListView(target: target, viewModel: viewModel)
+                    ContainerFocusListView(
+                        target: target,
+                        viewModel: viewModel,
+                        modelContext: modelContext,
+                        onSaveTask: { [weak viewModel] in
+                            viewModel?.createTask(in: target, context: modelContext)
+                        },
+                        onCancelTask: { [weak viewModel] in
+                            viewModel?.hideTaskCreationCard()
+                        }
+                    )
                 }
             case .list, .project:
-                if groupedContent.directItems.isEmpty && groupedContent.sectionGroups.isEmpty {
+                if groupedContent.directItems.isEmpty && groupedContent.sectionGroups.isEmpty && !viewModel.showingTaskCreationCard {
                     ContentUnavailableView(
                         "No items",
                         systemImage: target.symbol,
                         description: Text("Items added to this container will appear here.")
                     )
                 } else {
-                    ContainerFocusListView(target: target, viewModel: viewModel)
+                    ContainerFocusListView(
+                        target: target,
+                        viewModel: viewModel,
+                        modelContext: modelContext,
+                        onSaveTask: { [weak viewModel] in
+                            viewModel?.createTask(in: target, context: modelContext)
+                        },
+                        onCancelTask: { [weak viewModel] in
+                            viewModel?.hideTaskCreationCard()
+                        }
+                    )
                 }
             }
         }
@@ -163,6 +184,27 @@ struct ContainerFocusView: View {
                         }
                     }
             )
+    }
+
+    // MARK: - Floating Add Button
+
+    @Environment(\.modelContext) private var modelContext
+    
+    private var floatingAddButton: some View {
+        Button {
+            viewModel.showTaskCreationCard()
+        } label: {
+            Image(systemName: "plus.circle.fill")
+                .font(.system(size: 44))
+                .foregroundColor(.accentColor)
+                .background(Color(.systemBackground))
+                .clipShape(Circle())
+                .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 2)
+        }
+        .padding(.trailing, 16)
+        .padding(.bottom, 16)
+        .opacity(viewModel.showingTaskCreationCard ? 0 : 1)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.showingTaskCreationCard)
     }
 
     // MARK: - Body
@@ -198,6 +240,9 @@ struct ContainerFocusView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .overlay(alignment: .bottomTrailing) {
+            floatingAddButton
+        }
     }
 }
 
