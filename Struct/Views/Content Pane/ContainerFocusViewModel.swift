@@ -73,6 +73,11 @@ class ContainerFocusViewModel: ObservableObject {
     /// Tracks which child containers are expanded in Space view (session-only).
     @Published var expandedChildContainers: Set<ContainerChild.ID> = []
     
+    /// Tracks the currently visible nested section for each child container in Space view.
+    /// When a task section within a child container is about to scroll off, we show
+    /// "Container › Section" in the header to maintain context.
+    @Published var activeNestedSections: [ContainerChild.ID: String] = [:]
+    
     // MARK: - Methods
     
     /// Closes the filter view with animation and resets search state.
