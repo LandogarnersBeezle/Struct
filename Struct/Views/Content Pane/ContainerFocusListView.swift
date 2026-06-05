@@ -60,6 +60,10 @@ struct ContainerFocusListView: View {
     let target: ContainerTarget
     @ObservedObject var viewModel: ContainerFocusViewModel
     let modelContext: ModelContext
+    @Binding var showTaskCreationCard: Bool
+    /// The `PersistentIdentifier` of the most recently created item, used to
+    /// drive a brief highlight animation on its row.
+    @State private var highlightedItemId: PersistentIdentifier?
     
     private var groupedContent: (directItems: ContainerFocusViewModel.GroupedItems, sectionGroups: [ContainerFocusViewModel.SectionGroup]) {
         viewModel.groupedContent(for: target)
@@ -88,6 +92,20 @@ struct ContainerFocusListView: View {
         .scrollContentBackground(.hidden)
         .onPreferenceChange(SectionPositionPreferenceKey.self) { positions in
             updateActiveNestedSections(from: positions)
+        }
+    }
+
+    /// The next sort index for a new item in the current container.
+    private var nextItemSortIndex: Int {
+        (target.items.map(\.sortIndex).max() ?? -1) + 1
+    }
+
+    /// Convert the current navigation target into an `ItemParent`.
+    private func parentForTarget() -> ItemParent? {
+        switch target {
+        case .space(let s):  return .space(s)
+        case .project(let p): return .project(p)
+        case .list(let l):   return .list(l)
         }
     }
     
@@ -128,21 +146,68 @@ struct ContainerFocusListView: View {
         }
     }
     
+    // MARK: - Inline Creation Card
+    
+    /// The task creation card rendered as the first inline row when active.
+    @ViewBuilder
+    private var creationCardContent: some View {
+        if showTaskCreationCard {
+            TaskCreationCardView(
+                onCancel: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        showTaskCreationCard = false
+                    }
+                },
+                onSave: { title in
+                    // Animate the card out first
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        showTaskCreationCard = false
+                    }
+                    // After the card finishes dismissing, insert the item.
+                    // This gives the card's removal animation time to play out,
+                    // then SwiftData animates the new row into its sorted position.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        guard let parent = parentForTarget() else { return }
+                        let item = Item.create(in: modelContext,
+                                               title: title,
+                                               sortIndex: nextItemSortIndex,
+                                               parent: parent)
+                        // Highlight the new row
+                        highlightedItemId = item.persistentModelID
+                        // Clear highlight after 1.2s
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            withAnimation(.easeOut(duration: 0.4)) {
+                                highlightedItemId = nil
+                            }
+                        }
+                    }
+                }
+            )
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .transition(.opacity)
+        }
+    }
+
     // MARK: - List/Project Content
     
     @ViewBuilder
     private var listProjectContent: some View {
+        // Inline creation card (appears first, shifts everything down)
+        creationCardContent
+        
         // Direct items (unscheduled first, then scheduled)
         let directItems = groupedContent.directItems
         if !directItems.unscheduled.isEmpty || !directItems.scheduled.isEmpty {
             Section {
                 ForEach(directItems.unscheduled, id: \.persistentModelID) { item in
-                    ItemRowView(item: item)
+                    ItemRowView(item: item, isHighlighted: item.persistentModelID == highlightedItemId)
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
                 }
                 ForEach(directItems.scheduled, id: \.persistentModelID) { item in
-                    ItemRowView(item: item)
+                    ItemRowView(item: item, isHighlighted: item.persistentModelID == highlightedItemId)
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
                 }
@@ -164,17 +229,20 @@ struct ContainerFocusListView: View {
     
     @ViewBuilder
     private var spaceContent: some View {
+        // Inline creation card (appears first, shifts everything down)
+        creationCardContent
+        
         // Direct items (unscheduled first, then scheduled)
         let directItems = groupedContent.directItems
         if !directItems.unscheduled.isEmpty || !directItems.scheduled.isEmpty {
             Section {
                 ForEach(directItems.unscheduled, id: \.persistentModelID) { item in
-                    ItemRowView(item: item)
+                    ItemRowView(item: item, isHighlighted: item.persistentModelID == highlightedItemId)
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
                 }
                 ForEach(directItems.scheduled, id: \.persistentModelID) { item in
-                    ItemRowView(item: item)
+                    ItemRowView(item: item, isHighlighted: item.persistentModelID == highlightedItemId)
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
                 }
@@ -410,57 +478,6 @@ struct CollapsibleHeaderLabel: View {
 }
 
 #Preview {
-    let container = try! ModelContainer(
-        for: Space.self, Project.self, List.self, Item.self, TaskSection.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-    )
-    let context = container.mainContext
-    List.ensureInbox(in: context)
-    
-    // Create a Space with test data for hierarchical sticky headers
-    let space = Space(name: "Personal", sortIndex: 0)
-    context.insert(space)
-    
-    // Create a List within the space with a task section
-    let list = List(title: "Groceries", space: space, sortIndex: 0)
-    context.insert(list)
-    
-    // Direct tasks in list
-    Item.create(in: context, title: "Buy milk", sortIndex: 0, parent: .list(list))
-    Item.create(in: context, title: "Buy eggs", sortIndex: 1, parent: .list(list))
-    Item.create(in: context, title: "Buy bread", sortIndex: 2, parent: .list(list))
-    
-    // Task section in list
-    let listSection = TaskSection(title: "Weekly Shopping", parent: .list(list))
-    context.insert(listSection)
-    Item.create(in: context, title: "Apples", sortIndex: 0, parent: .taskSection(listSection))
-    Item.create(in: context, title: "Bananas", sortIndex: 1, parent: .taskSection(listSection))
-    Item.create(in: context, title: "Oranges", sortIndex: 2, parent: .taskSection(listSection))
-    
-    // Create a Project within the space with a task section
-    let project = Project(title: "Home Renovation", space: space, sortIndex: 1)
-    context.insert(project)
-    
-    // Direct tasks in project
-    Item.create(in: context, title: "Choose paint colors", sortIndex: 0, parent: .project(project))
-    Item.create(in: context, title: "Get contractor quotes", sortIndex: 1, parent: .project(project))
-    
-    // Task section in project
-    let projectSection = TaskSection(title: "Kitchen Remodel", parent: .project(project))
-    context.insert(projectSection)
-    Item.create(in: context, title: "Demolish old cabinets", sortIndex: 0, parent: .taskSection(projectSection))
-    Item.create(in: context, title: "Install new countertops", sortIndex: 1, parent: .taskSection(projectSection))
-    
-    let viewModel = ContainerFocusViewModel()
-    // Pre-expand both containers for testing
-    viewModel.expandedChildContainers = [.list(list.persistentModelID), .project(project.persistentModelID)]
-    
-    return NavigationStack {
-        ContainerFocusListView(
-            target: .space(space),
-            viewModel: viewModel,
-            modelContext: context
-        )
-    }
-    .modelContainer(container)
+    EmptyView()
+        .modelContainer(for: [Space.self, Project.self, List.self, Item.self, TaskSection.self], inMemory: true)
 }

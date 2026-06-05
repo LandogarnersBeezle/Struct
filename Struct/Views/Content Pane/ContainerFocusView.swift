@@ -18,6 +18,7 @@ struct ContainerFocusView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @StateObject private var viewModel: ContainerFocusViewModel
+    @State private var showTaskCreationCard: Bool = false
 
     // MARK: - Data Queries
 
@@ -67,6 +68,23 @@ struct ContainerFocusView: View {
     private var childContainerGroups: [ContainerFocusViewModel.ChildContainerGroup] {
         guard case .space(let space) = target else { return [] }
         return viewModel.childContainerGroups(for: space)
+    }
+
+    // MARK: - Item Creation
+
+    /// The next sort index for a new item in the current container.
+    private var nextItemSortIndex: Int {
+        (target.items.map(\.sortIndex).max() ?? -1) + 1
+    }
+
+    /// Convert the current navigation target into an `ItemParent` so we can
+    /// create an item owned by this container.
+    private func parentForTarget() -> ItemParent? {
+        switch target {
+        case .space(let s):  return .space(s)
+        case .project(let p): return .project(p)
+        case .list(let l):   return .list(l)
+        }
     }
 
     // MARK: - Back Button
@@ -136,7 +154,8 @@ struct ContainerFocusView: View {
                     ContainerFocusListView(
                         target: target,
                         viewModel: viewModel,
-                        modelContext: modelContext
+                        modelContext: modelContext,
+                        showTaskCreationCard: $showTaskCreationCard
                     )
                 }
             case .list, .project:
@@ -150,7 +169,8 @@ struct ContainerFocusView: View {
                     ContainerFocusListView(
                         target: target,
                         viewModel: viewModel,
-                        modelContext: modelContext
+                        modelContext: modelContext,
+                        showTaskCreationCard: $showTaskCreationCard
                     )
                 }
             }
@@ -205,6 +225,23 @@ struct ContainerFocusView: View {
             .animation(.spring(response: 0.25, dampingFraction: 0.8, blendDuration: 0), value: viewModel.showFilterView)
             .overlay(alignment: .leading) {
                 swipeBackOverlay
+            }
+            .overlay(alignment: .bottomTrailing) {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        showTaskCreationCard.toggle()
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.accentColor))
+                        .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 16)
+                .buttonStyle(.plain)
             }
         }
         .toolbar(.hidden, for: .navigationBar)

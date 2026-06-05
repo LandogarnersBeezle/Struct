@@ -91,6 +91,11 @@ struct ContainersSidebarView: View {
         }
         .environment(drag)
         .environment(swipeSelection)
+        .overlay(alignment: .bottomTrailing) {
+            addMenu
+                .padding(.trailing, 20)
+                .padding(.bottom, 16)
+        }
     }
 
     // MARK: - Space slots
@@ -164,19 +169,12 @@ struct ContainersSidebarView: View {
         .onPreferenceChange(SpaceHeaderFrameKey.self) { drag.spaceHeaderFrames   = $0 }
         .onPreferenceChange(SidebarOriginKey.self)    { drag.sidebarOriginInWindow = $0 }
         .safeAreaInset(edge: .bottom) {
-            // The add button and the action bar share the same fixed-height slot
-            // (using a ZStack) so the scroll inset never changes size — rows near
-            // the bottom are always fully visible regardless of which is active.
-            ZStack {
-                addMenu
-                    .opacity(swipeSelection.active == nil ? 1 : 0)
-                    .scaleEffect(swipeSelection.active == nil ? 1 : 0.85)
-                ContainerActionBar()
-                    .opacity(swipeSelection.active != nil ? 1 : 0)
-                    .scaleEffect(swipeSelection.active != nil ? 1 : 0.85)
-            }
-            .animation(.spring(duration: 0.28, bounce: 0), value: swipeSelection.active != nil)
-            .padding()
+            // Action bar shown during swipe interactions — takes the full inset.
+            // The add button is positioned separately via overlay to sit at bottom‑right.
+            ContainerActionBar()
+                .opacity(swipeSelection.active != nil ? 1 : 0)
+                .scaleEffect(swipeSelection.active != nil ? 1 : 0.85)
+                .animation(.spring(duration: 0.28, bounce: 0), value: swipeSelection.active != nil)
         }
         .sheet(item: $pendingCreate) { CreateContainerView(kind: $0) }
         .errorAlert($saveError)
@@ -390,11 +388,13 @@ struct ContainersSidebarView: View {
             Button("New Project", systemImage: "folder")          { pendingCreate = .project }
         } label: {
             Image(systemName: "plus")
-                .frame(width: 56, height: 56)
-                .background(.tint, in: Circle())
+                .font(.title2.weight(.semibold))
                 .foregroundStyle(.white)
-                .shadow(radius: 4, y: 2)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(Color.accentColor))
+                .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
         }
+        .buttonStyle(.plain)
     }
     
     // MARK: - Content Height Estimation
