@@ -70,12 +70,6 @@ class ContainerFocusViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published var showFilterView: Bool = false
     
-    /// Whether the task creation card is currently visible.
-    @Published var showingTaskCreationCard: Bool = false
-    
-    /// The title text being entered for a new task.
-    @Published var newTaskTitle: String = ""
-    
     /// Tracks which child containers are expanded in Space view (session-only).
     @Published var expandedChildContainers: Set<ContainerChild.ID> = []
     
@@ -196,76 +190,5 @@ class ContainerFocusViewModel: ObservableObject {
     /// Checks if a child container is expanded.
     func isChildContainerExpanded(_ child: ContainerChild) -> Bool {
         expandedChildContainers.contains(child.id)
-    }
-    
-    // MARK: - Task Creation
-    
-    /// Shows the task creation card and focuses the title field.
-    func showTaskCreationCard() {
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.8, blendDuration: 0)) {
-            showingTaskCreationCard = true
-            newTaskTitle = ""
-        }
-    }
-    
-    /// Hides the task creation card and resets the title.
-    func hideTaskCreationCard() {
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.8, blendDuration: 0)) {
-            showingTaskCreationCard = false
-            newTaskTitle = ""
-        }
-    }
-    
-    /// Creates a new task in the specified container.
-    /// - Parameters:
-    ///   - target: The container to add the task to.
-    ///   - context: The model context to use for insertion.
-    /// - Returns: The created Item, or nil if creation failed.
-    @discardableResult
-    func createTask(in target: ContainerTarget, context: ModelContext) -> Item? {
-        let trimmedTitle = newTaskTitle.trimmingCharacters(in: .whitespaces)
-        guard !trimmedTitle.isEmpty else { return nil }
-        
-        // Determine the parent for the new item
-        let parent: ItemParent
-        switch target {
-        case .space(let space):
-            parent = .space(space)
-        case .list(let list):
-            parent = .list(list)
-        case .project(let project):
-            parent = .project(project)
-        }
-        
-        // Calculate the next sort index
-        let nextIndex = nextSortIndex(for: target)
-        
-        // Create the item using the idiomatic static method
-        let item = Item.create(
-            in: context,
-            title: trimmedTitle,
-            sortIndex: nextIndex,
-            parent: parent
-        )
-        
-        // Reset state
-        hideTaskCreationCard()
-        
-        return item
-    }
-    
-    /// Calculates the next available sort index for a new item in the given container.
-    private func nextSortIndex(for target: ContainerTarget) -> Int {
-        let items: [Item]
-        switch target {
-        case .space(let space):
-            items = space.items
-        case .list(let list):
-            items = list.items
-        case .project(let project):
-            items = project.items
-        }
-        
-        return (items.map(\.sortIndex).max() ?? -1) + 1
     }
 }

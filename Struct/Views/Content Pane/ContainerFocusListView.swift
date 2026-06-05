@@ -60,8 +60,6 @@ struct ContainerFocusListView: View {
     let target: ContainerTarget
     @ObservedObject var viewModel: ContainerFocusViewModel
     let modelContext: ModelContext
-    let onSaveTask: () -> Void
-    let onCancelTask: () -> Void
     
     private var groupedContent: (directItems: ContainerFocusViewModel.GroupedItems, sectionGroups: [ContainerFocusViewModel.SectionGroup]) {
         viewModel.groupedContent(for: target)
@@ -134,22 +132,6 @@ struct ContainerFocusListView: View {
     
     @ViewBuilder
     private var listProjectContent: some View {
-        // Task creation card (shown at top when active)
-        if viewModel.showingTaskCreationCard {
-            Section {
-                TaskCreationCard(
-                    title: $viewModel.newTaskTitle,
-                    onSave: onSaveTask,
-                    onCancel: onCancelTask
-                )
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            } header: {
-                EmptyView()
-            }
-        }
-        
         // Direct items (unscheduled first, then scheduled)
         let directItems = groupedContent.directItems
         if !directItems.unscheduled.isEmpty || !directItems.scheduled.isEmpty {
@@ -182,22 +164,6 @@ struct ContainerFocusListView: View {
     
     @ViewBuilder
     private var spaceContent: some View {
-        // Task creation card (shown at top when active)
-        if viewModel.showingTaskCreationCard {
-            Section {
-                TaskCreationCard(
-                    title: $viewModel.newTaskTitle,
-                    onSave: onSaveTask,
-                    onCancel: onCancelTask
-                )
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            } header: {
-                EmptyView()
-            }
-        }
-        
         // Direct items (unscheduled first, then scheduled)
         let directItems = groupedContent.directItems
         if !directItems.unscheduled.isEmpty || !directItems.scheduled.isEmpty {
@@ -493,9 +459,7 @@ struct CollapsibleHeaderLabel: View {
         ContainerFocusListView(
             target: .space(space),
             viewModel: viewModel,
-            modelContext: context,
-            onSaveTask: {},
-            onCancelTask: {}
+            modelContext: context
         )
     }
     .modelContainer(container)
