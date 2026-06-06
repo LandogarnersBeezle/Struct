@@ -15,7 +15,8 @@ struct TaskCreationCardView: View {
     let onCancel: () -> Void
     let onSave: (String) -> Void
 
-    @State private var title: String = "Test Task"
+    @State private var title: String = ""
+    @FocusState private var isTitleFocused: Bool
 
     var body: some View {
         VStack(spacing: 12) {
@@ -23,16 +24,24 @@ struct TaskCreationCardView: View {
             TextField("Task title", text: $title, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.body)
+                .focused($isTitleFocused)
+                .onAppear {
+                    isTitleFocused = true
+                }
 
             // Buttons
             HStack(spacing: 12) {
-                Button("Cancel", role: .cancel) {
+                Button(role: .cancel) {
                     onCancel()
+                } label: {
+                    Image(systemName: "xmark")
                 }
                 .buttonStyle(.bordered)
 
-                Button("Save") {
+                Button {
                     onSave(title)
+                } label: {
+                    Image(systemName: "checkmark")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
