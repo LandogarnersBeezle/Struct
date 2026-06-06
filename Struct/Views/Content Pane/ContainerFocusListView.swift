@@ -60,7 +60,6 @@ struct ContainerFocusListView: View {
     let target: ContainerTarget
     @ObservedObject var viewModel: ContainerFocusViewModel
     let modelContext: ModelContext
-    @Binding var showTaskCreationCard: Bool
     /// The `PersistentIdentifier` of the most recently created item, used to
     /// drive a brief highlight animation on its row.
     @State private var highlightedItemId: PersistentIdentifier?
@@ -146,57 +145,11 @@ struct ContainerFocusListView: View {
         }
     }
     
-    // MARK: - Inline Creation Card
-    
-    /// The task creation card rendered as the first inline row when active.
-    @ViewBuilder
-    private var creationCardContent: some View {
-        if showTaskCreationCard {
-            TaskCreationCardView(
-                onCancel: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        showTaskCreationCard = false
-                    }
-                },
-                onSave: { title in
-                    // Animate the card out first
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        showTaskCreationCard = false
-                    }
-                    // After the card finishes dismissing, insert the item.
-                    // This gives the card's removal animation time to play out,
-                    // then SwiftData animates the new row into its sorted position.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        guard let parent = parentForTarget() else { return }
-                        let item = Item.create(in: modelContext,
-                                               title: title,
-                                               sortIndex: nextItemSortIndex,
-                                               parent: parent)
-                        // Highlight the new row
-                        highlightedItemId = item.persistentModelID
-                        // Clear highlight after 1.2s
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                            withAnimation(.easeOut(duration: 0.4)) {
-                                highlightedItemId = nil
-                            }
-                        }
-                    }
-                }
-            )
-            .listRowInsets(EdgeInsets())
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .transition(.opacity)
-        }
-    }
 
     // MARK: - List/Project Content
     
     @ViewBuilder
     private var listProjectContent: some View {
-        // Inline creation card (appears first, shifts everything down)
-        creationCardContent
-        
         // Direct items (unscheduled first, then scheduled)
         let directItems = groupedContent.directItems
         if !directItems.unscheduled.isEmpty || !directItems.scheduled.isEmpty {
@@ -229,9 +182,6 @@ struct ContainerFocusListView: View {
     
     @ViewBuilder
     private var spaceContent: some View {
-        // Inline creation card (appears first, shifts everything down)
-        creationCardContent
-        
         // Direct items (unscheduled first, then scheduled)
         let directItems = groupedContent.directItems
         if !directItems.unscheduled.isEmpty || !directItems.scheduled.isEmpty {
@@ -267,12 +217,12 @@ struct ContainerFocusListView: View {
     // MARK: - Section Builders
     
     @ViewBuilder
-    private func taskSectionContent(sectionGroup: ContainerFocusViewModel.SectionGroup) -> some View {
-        taskSectionContent(sectionGroup: sectionGroup, childContainerID: nil)
+    private func taskSectionContent(sectionGroup: ContainerFocusViewModel.SectionGroup, titleColor: Color = .secondary) -> some View {
+        taskSectionContent(sectionGroup: sectionGroup, childContainerID: nil, titleColor: titleColor)
     }
     
     @ViewBuilder
-    private func taskSectionContent(sectionGroup: ContainerFocusViewModel.SectionGroup, childContainerID: ContainerChild.ID?) -> some View {
+    private func taskSectionContent(sectionGroup: ContainerFocusViewModel.SectionGroup, childContainerID: ContainerChild.ID?, titleColor: Color = .secondary) -> some View {
         // Section title header - uses Section header for sticky behavior
         Section {
             if sectionGroup.groupedItems.unscheduled.isEmpty && sectionGroup.groupedItems.scheduled.isEmpty {
@@ -294,7 +244,7 @@ struct ContainerFocusListView: View {
         } header: {
             // Sticky header with row-like appearance
             // Track position for sections inside child containers in space view
-            SectionTitleLabel(title: sectionGroup.title, itemCount: sectionGroup.groupedItems.unscheduled.count + sectionGroup.groupedItems.scheduled.count)
+            SectionTitleLabel(title: sectionGroup.title, titleColor: titleColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.clear)
                 .padding(.horizontal, -16)
@@ -372,33 +322,23 @@ struct ContainerFocusListView: View {
 /// Header label for TaskSection titles
 struct SectionTitleLabel: View {
     let title: String
-    var itemCount: Int = 0
-    
-    private var isEmpty: Bool { itemCount == 0 }
+    /// The foreground color for the title text. Defaults to .secondary.
+    var titleColor: Color = .secondary
     
     var body: some View {
         HStack {
             Text(title.uppercased())
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(titleColor)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .opacity(isEmpty ? 0.5 : 1.0)
             
             Spacer()
-            
-            if !isEmpty {
-                Text("\(itemCount)")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.12), in: Capsule())
-            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(Color.clear)
+        .background(Color.secondary.opacity(0.06))
+        .cornerRadius(6)
     }
 }
 
@@ -457,11 +397,7 @@ struct CollapsibleHeaderLabel: View {
             if !isEmpty {
                 Text("\(itemCount)")
                     .font(.caption)
-                    .fontWeight(.medium)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.12), in: Capsule())
             }
             
             Image(systemName: "chevron.down")

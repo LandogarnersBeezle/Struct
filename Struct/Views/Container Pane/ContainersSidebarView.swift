@@ -247,7 +247,7 @@ struct ContainersSidebarView: View {
             let openCount = space.items.filter { !$0.isCompleted }.count
             if openCount > 0 {
                 Text("\(openCount)")
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .font(.caption)
                     // .padding(2)
                     // .background {

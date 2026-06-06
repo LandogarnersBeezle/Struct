@@ -154,8 +154,7 @@ struct ContainerFocusView: View {
                     ContainerFocusListView(
                         target: target,
                         viewModel: viewModel,
-                        modelContext: modelContext,
-                        showTaskCreationCard: $showTaskCreationCard
+                        modelContext: modelContext
                     )
                 }
             case .list, .project:
@@ -169,8 +168,7 @@ struct ContainerFocusView: View {
                     ContainerFocusListView(
                         target: target,
                         viewModel: viewModel,
-                        modelContext: modelContext,
-                        showTaskCreationCard: $showTaskCreationCard
+                        modelContext: modelContext
                     )
                 }
             }
@@ -242,6 +240,33 @@ struct ContainerFocusView: View {
                 .padding(.trailing, 20)
                 .padding(.bottom, 16)
                 .buttonStyle(.plain)
+            }
+            // Task creation card overlay - shown regardless of container content
+            .overlay(alignment: .top) {
+                if showTaskCreationCard {
+                    TaskCreationCardView(
+                        onCancel: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                showTaskCreationCard = false
+                            }
+                        },
+                        onSave: { title in
+                            // Animate the card out first
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                showTaskCreationCard = false
+                            }
+                            // After the card finishes dismissing, insert the item
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                guard let parent = parentForTarget() else { return }
+                                let item = Item.create(in: modelContext,
+                                                       title: title,
+                                                       sortIndex: nextItemSortIndex,
+                                                       parent: parent)
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
         }
         .toolbar(.hidden, for: .navigationBar)
