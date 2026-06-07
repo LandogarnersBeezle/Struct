@@ -18,23 +18,26 @@ struct WeekRow: View {
     
     private let calendar = Calendar.current
     
-    /// Check if a date should be disabled based on current type and doDate
+    /// Check if a date should be disabled
     private func isDateDisabled(_ date: Date) -> Bool {
-        // Only disable dates when setting due date and doDate is set
-        guard currentDateType == .dueDate, let doDate = doDate else {
-            return false
-        }
-        // Disable dates before doDate (compare by day, ignoring time)
-        let dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
-        let doDateComponents = calendar.dateComponents([.year, .month, .day], from: doDate)
+        // Get start of day for the date
+        let startOfDate = calendar.startOfDay(for: date)
+        let startOfToday = calendar.startOfDay(for: today)
         
-        if dateComponents.year != doDateComponents.year {
-            return (dateComponents.year ?? 0) < (doDateComponents.year ?? 0)
+        // Always disable dates before today
+        if startOfDate < startOfToday {
+            return true
         }
-        if dateComponents.month != doDateComponents.month {
-            return (dateComponents.month ?? 0) < (doDateComponents.month ?? 0)
+        
+        // When setting due date, also disable dates before doDate
+        if currentDateType == .dueDate, let doDate = doDate {
+            let startOfDoDate = calendar.startOfDay(for: doDate)
+            if startOfDate < startOfDoDate {
+                return true
+            }
         }
-        return (dateComponents.day ?? 0) < (doDateComponents.day ?? 0)
+        
+        return false
     }
     
     var body: some View {

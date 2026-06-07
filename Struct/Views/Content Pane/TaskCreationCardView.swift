@@ -23,6 +23,49 @@ struct TaskCreationCardView: View {
     @State private var hasSelectedDoDate: Bool = false
     @State private var hasSelectedDueDate: Bool = false
     @FocusState private var isTitleFocused: Bool
+    
+    private let calendar = Calendar.current
+    
+    // MARK: - Date Formatting Helper
+    
+    /// Formats a date according to the specified rules:
+    /// - Next 7 days: abbreviated weekday (Mon, Tue, Wed)
+    /// - Other days in current year: date + abbreviated month (7 Jun)
+    /// - Days in other years: full format with year (9 Oct 2027)
+    private func formattedDate(from date: Date) -> String {
+        let now = Date()
+        
+        // Check if date is within the next 7 days
+        let startOfToday = calendar.startOfDay(for: now)
+        let startOfDate = calendar.startOfDay(for: date)
+        if let startOfSevenDaysFromNow = calendar.date(byAdding: .day, value: 7, to: startOfToday),
+           startOfDate >= startOfToday,
+           startOfDate < startOfSevenDaysFromNow {
+            // Format as abbreviated weekday
+            let formatter = DateFormatter()
+            formatter.locale = .current
+            formatter.dateFormat = "EEE"
+            return formatter.string(from: date)
+        }
+        
+        // Check if date is in the current year
+        let currentYear = calendar.component(.year, from: now)
+        let dateYear = calendar.component(.year, from: date)
+        
+        if dateYear == currentYear {
+            // Format as date + abbreviated month (e.g., "7 Jun")
+            let formatter = DateFormatter()
+            formatter.locale = .current
+            formatter.dateFormat = "d MMM"
+            return formatter.string(from: date)
+        } else {
+            // Format with year (e.g., "9 Oct 2027")
+            let formatter = DateFormatter()
+            formatter.locale = .current
+            formatter.dateFormat = "d MMM yyyy"
+            return formatter.string(from: date)
+        }
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -35,8 +78,8 @@ struct TaskCreationCardView: View {
                         showDatePicker = true
                     } label: {
                         if hasSelectedDoDate, let doDate = doDate {
-                            // Show formatted date
-                            Text(doDate, style: .date)
+                            // Show formatted date using special formula
+                            Text(formattedDate(from: doDate))
                                 .font(.caption)
                                 .foregroundColor(.accentColor)
                                 .padding(6)
@@ -71,8 +114,8 @@ struct TaskCreationCardView: View {
                             showDatePicker = true
                         } label: {
                             if hasSelectedDueDate, let dueDate = dueDate {
-                                // Show formatted date with red color
-                                Text(dueDate, style: .date)
+                                // Show formatted date with red color using special formula
+                                Text(formattedDate(from: dueDate))
                                     .font(.caption)
                                     .foregroundColor(.red)
                                     .padding(6)
@@ -121,10 +164,9 @@ struct TaskCreationCardView: View {
             .padding(.top, 8)
             .transition(.move(edge: .top).combined(with: .opacity))
             
-            // Date picker overlay - positioned below the card with spacing
+            // Date picker overlay - positioned at the top, overlaying the card
             if showDatePicker {
                 VStack {
-                    Spacer(minLength: 140) // Push overlay below the card with gap
                     DatePickerOverlay(
                         isPresented: $showDatePicker,
                         selectedDate: Binding(
@@ -137,28 +179,51 @@ struct TaskCreationCardView: View {
                                 }
                             }
                         ),
+                        datePickerType: $datePickerType,
                         dateType: datePickerType,
                         doDate: doDate,
-                        onDateSelected: { date in
-                            if datePickerType == .doDate {
-                                doDate = date
+                        dueDate: dueDate,
+                        onSave: { newDoDate, newDueDate in
+                            // Save both dates from the picker
+                            // Only update if the date is not nil (nil means it was cleared)
+                            if newDoDate != nil {
+                                doDate = newDoDate
                                 hasSelectedDoDate = true
-                            } else {
-                                dueDate = date
-                                hasSelectedDueDate = true
+                            } else if datePickerType == .doDate {
+                                // If do date was cleared and we're on do date tab, clear it
+                                hasSelectedDoDate = false
+                                doDate = nil
                             }
+                            if newDueDate != nil {
+                                dueDate = newDueDate
+                                hasSelectedDueDate = true
+                            } else if datePickerType == .dueDate {
+                                // If due date was cleared and we're on due date tab, clear it
+                                hasSelectedDueDate = false
+                                dueDate = nil
+                            }
+                            // If do date was cleared, also clear due date (due date can't exist without do date)
+                            if newDoDate == nil && datePickerType == .doDate {
+                                hasSelectedDueDate = false
+                                dueDate = nil
+                            }
+                            showDatePicker = false
+                        },
+                        onCancel: {
+                            // Restore original dates on cancel
                             showDatePicker = false
                         },
                         onClearDate: {
                             if datePickerType == .doDate {
                                 hasSelectedDoDate = false
                                 doDate = nil
+                                hasSelectedDueDate = false
+                                dueDate = nil
                             } else {
                                 hasSelectedDueDate = false
                                 dueDate = nil
                             }
-                        },
-                        hasExistingDate: datePickerType == .doDate ? hasSelectedDoDate : hasSelectedDueDate
+                        }
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     Spacer()
@@ -168,6 +233,7 @@ struct TaskCreationCardView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: showDatePicker)
         .animation(.easeInOut(duration: 0.2), value: hasSelectedDoDate)
+        .animation(.easeInOut(duration: 0.2), value: hasSelectedDueDate)
     }
 }
 

@@ -36,8 +36,7 @@ class DatePickerViewModel: ObservableObject {
     let objectWillChange = ObservableObjectPublisher()
     
     private let calendar = Calendar.current
-    private let bufferSize = 10 // Number of months to load on each side
-    private let maxYearRange = 100 // Years before/after current year
+    private let maxFutureYears = 5 // Allow scrolling 5 years into the future
     
     init() {
         loadInitialMonths()
@@ -47,83 +46,34 @@ class DatePickerViewModel: ObservableObject {
         let currentDate = Date()
         let currentMonth = calendar.dp_startOfMonth(for: currentDate)
         
-        // Load months around current date
+        // Load current and future months only (no past months)
         var loadedMonths: [MonthData] = []
         
-        // Load past months
-        for i in (1...bufferSize).reversed() {
-            if let month = calendar.date(byAdding: .month, value: -i, to: currentMonth) {
-                loadedMonths.append(MonthData(date: month))
-            }
-        }
+        // Calculate the maximum month (5 years from now)
+        let maxFutureMonth = calendar.date(byAdding: .year, value: maxFutureYears, to: currentMonth)!
         
-        // Load current and future months
-        for i in 0..<bufferSize {
-            if let month = calendar.date(byAdding: .month, value: i, to: currentMonth) {
+        // Load all months from current to 5 years in the future (60 months)
+        var monthCounter = 0
+        while monthCounter < maxFutureYears * 12 + 1 { // +1 to include the last month
+            if let month = calendar.date(byAdding: .month, value: monthCounter, to: currentMonth),
+                   calendar.compare(month, to: maxFutureMonth, toGranularity: .month) != .orderedDescending {
                 loadedMonths.append(MonthData(date: month))
             }
+            monthCounter += 1
         }
         
         months = loadedMonths
-        visibleMonthIndex = bufferSize // Current month index
+        visibleMonthIndex = 0 // Current month is the first month
     }
     
     func loadPreviousMonthsIfNeeded(currentIndex: Int) {
-        guard currentIndex <= 2, !isLoadingPrevious else { return }
-        
-        // Check if we've hit the minimum year
-        if let firstMonth = months.first?.date {
-            let year = calendar.component(.year, from: firstMonth)
-            let currentYear = calendar.component(.year, from: Date())
-            if currentYear - year >= maxYearRange {
-                return // Hit limit
-            }
-        }
-        
-        isLoadingPrevious = true
-        
-        // Generate previous months
-        var newMonths: [MonthData] = []
-        if let firstMonth = months.first?.date {
-            for i in (1...bufferSize).reversed() {
-                if let month = calendar.date(byAdding: .month, value: -i, to: firstMonth) {
-                    newMonths.append(MonthData(date: month))
-                }
-            }
-        }
-        
-        let offset = newMonths.count
-        months.insert(contentsOf: newMonths, at: 0)
-        visibleMonthIndex += offset
-        isLoadingPrevious = false
+        // No longer needed - we don't show past months
+        // The first month is always the current month
     }
     
     func loadNextMonthsIfNeeded(currentIndex: Int) {
-        guard currentIndex >= months.count - 3, !isLoadingNext else { return }
-        
-        // Check if we've hit the maximum year
-        if let lastMonth = months.last?.date {
-            let year = calendar.component(.year, from: lastMonth)
-            let currentYear = calendar.component(.year, from: Date())
-            if year - currentYear >= maxYearRange {
-                return // Hit limit
-            }
-        }
-        
-        isLoadingNext = true
-        
-        // Generate next months
-        var newMonths: [MonthData] = []
-        if let lastMonth = months.last?.date {
-            for i in 1...bufferSize {
-                if let month = calendar.date(byAdding: .month, value: i, to: lastMonth) {
-                    newMonths.append(MonthData(date: month))
-                }
-            }
-        }
-        
-        months.append(contentsOf: newMonths)
-        isLoadingNext = false
+        // All months are pre-loaded for 5 years, no need to load more
+        // The limit is already enforced in loadInitialMonths
     }
     
     func scrollToDate(_ date: Date) {
@@ -132,28 +82,8 @@ class DatePickerViewModel: ObservableObject {
         // Find if month already exists in loaded months
         if let index = months.firstIndex(where: { calendar.dp_isDate($0.date, inSameMonthAs: targetMonth) }) {
             visibleMonthIndex = index
-        } else {
-            // Need to load months around target date
-            var newMonths: [MonthData] = []
-            
-            // Load months around target
-            for i in (1...bufferSize).reversed() {
-                if let month = calendar.date(byAdding: .month, value: -i, to: targetMonth) {
-                    newMonths.append(MonthData(date: month))
-                }
-            }
-            
-            newMonths.append(MonthData(date: targetMonth))
-            
-            for i in 1...bufferSize {
-                if let month = calendar.date(byAdding: .month, value: i, to: targetMonth) {
-                    newMonths.append(MonthData(date: month))
-                }
-            }
-            
-            months = newMonths
-            visibleMonthIndex = bufferSize
         }
+        // If month not found, it's outside our range - do nothing
     }
     
     func navigateToPreviousMonth() {

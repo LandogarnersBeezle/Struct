@@ -12,10 +12,18 @@ struct CalendarWithActionsView: View {
     @Binding var selectedDate: Date
     @Binding var currentDateType: DateType
     let doDate: Date? // For validation when setting due date
-    let onDateSelected: (Date) -> Void
+    let dueDate: Date? // The current due date value
+    let onSave: () -> Void
+    let onCancel: () -> Void
     let dismiss: () -> Void
     let onClearDate: () -> Void
     let hasExistingDate: Bool
+    
+    // Callbacks to update dates when switching between date types
+    let onDateTypeChanged: ((DateType, DateType) -> Void)?  // (oldType, newType)
+    
+    // Callback when a date is selected in the calendar
+    let onDateSelected: ((Date) -> Void)?
     
     @State private var scrollTarget: UUID?
     
@@ -29,10 +37,57 @@ struct CalendarWithActionsView: View {
         return formatter.shortStandaloneWeekdaySymbols
     }()
     
+    private var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        return formatter
+    }
+    
+    // MARK: - Date Formatting Helper
+    
+    /// Formats a date according to the specified rules:
+    /// - Next 7 days: abbreviated weekday (Mon, Tue, Wed)
+    /// - Other days in current year: date + abbreviated month (7 Jun)
+    /// - Days in other years: full format with year (9 Oct 2027)
+    private func formattedDate(from date: Date) -> String {
+        let now = Date()
+        
+        // Check if date is within the next 7 days
+        let startOfToday = calendar.startOfDay(for: now)
+        let startOfDate = calendar.startOfDay(for: date)
+        if let startOfSevenDaysFromNow = calendar.date(byAdding: .day, value: 7, to: startOfToday),
+           startOfDate >= startOfToday,
+           startOfDate < startOfSevenDaysFromNow {
+            // Format as abbreviated weekday
+            let formatter = DateFormatter()
+            formatter.locale = .current
+            formatter.dateFormat = "EEE"
+            return formatter.string(from: date)
+        }
+        
+        // Check if date is in the current year
+        let currentYear = calendar.component(.year, from: now)
+        let dateYear = calendar.component(.year, from: date)
+        
+        if dateYear == currentYear {
+            // Format as date + abbreviated month (e.g., "7 Jun")
+            let formatter = DateFormatter()
+            formatter.locale = .current
+            formatter.dateFormat = "d MMM"
+            return formatter.string(from: date)
+        } else {
+            // Format with year (e.g., "9 Oct 2027")
+            let formatter = DateFormatter()
+            formatter.locale = .current
+            formatter.dateFormat = "d MMM yyyy"
+            return formatter.string(from: date)
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
-            // Date type toggle buttons (Do Date / Deadline)
-            dateTypeToggleButtons
+            // Header with cancel, date type buttons, and save
+            headerRow
             
             // Navigation header with month/year and arrows
             navigationHeader
@@ -55,36 +110,88 @@ struct CalendarWithActionsView: View {
         .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
     }
     
-    // MARK: - Date Type Toggle Buttons
+    // MARK: - Header Row
     
-    private var dateTypeToggleButtons: some View {
-        HStack(spacing: 12) {
-            // Do Date button
+    private var headerRow: some View {
+        HStack(spacing: 8) {
+            // Cancel button (round with X icon)
             Button {
-                currentDateType = .doDate
+                onCancel()
             } label: {
-                Label("Do Date", systemImage: "calendar.badge.clock")
-                    .font(.caption)
-                    .fontWeight(currentDateType == .doDate ? .semibold : .medium)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(currentDateType == .doDate ? Color.accentColor.opacity(0.2) : Color(.systemGray6))
-                    .foregroundColor(currentDateType == .doDate ? .accentColor : .primary)
-                    .cornerRadius(8)
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 32, height: 32)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(16)
             }
             
-            // Deadline button
+            // Do Date button (icon only, with date if set)
             Button {
-                currentDateType = .dueDate
+                withAnimation {
+                    let oldType = currentDateType
+                    currentDateType = .doDate
+                    if oldType != .doDate {
+                        onDateTypeChanged?(oldType, .doDate)
+                    }
+                }
             } label: {
-                Label("Deadline", systemImage: "flag.fill")
-                    .font(.caption)
-                    .fontWeight(currentDateType == .dueDate ? .semibold : .medium)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(currentDateType == .dueDate ? Color.red.opacity(0.2) : Color(.systemGray6))
-                    .foregroundColor(currentDateType == .dueDate ? .red : .primary)
-                    .cornerRadius(8)
+                HStack(spacing: 4) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 14))
+                    // Always show the doDate value (nil if not set)
+                    if let displayDate = doDate {
+                        Text(formattedDate(from: displayDate))
+                            .font(.caption2)
+                    }
+                }
+                .fontWeight(currentDateType == .doDate ? .semibold : .medium)
+                .foregroundColor(currentDateType == .doDate ? .accentColor : .primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(currentDateType == .doDate ? Color.accentColor.opacity(0.2) : Color.clear)
+                .cornerRadius(8)
+            }
+            
+            // Deadline button (icon only, with date if set) - keep space even when hidden
+            Button {
+                withAnimation {
+                    let oldType = currentDateType
+                    currentDateType = .dueDate
+                    if oldType != .dueDate {
+                        onDateTypeChanged?(oldType, .dueDate)
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "flag.fill")
+                        .font(.system(size: 14))
+                    // Always show the dueDate value (nil if not set)
+                    if let displayDate = dueDate {
+                        Text(formattedDate(from: displayDate))
+                            .font(.caption2)
+                    }
+                }
+                .fontWeight(currentDateType == .dueDate ? .semibold : .medium)
+                .foregroundColor(currentDateType == .dueDate ? .red : .primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(currentDateType == .dueDate ? Color.red.opacity(0.2) : Color.clear)
+                .cornerRadius(8)
+            }
+            .opacity(doDate != nil ? 1 : 0)
+            .disabled(doDate == nil)
+            
+            // Save button (round with checkmark icon)
+            Button {
+                onSave()
+            } label: {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white)
+                    .frame(width: 32, height: 32)
+                    .background(Color.accentColor)
+                    .cornerRadius(16)
             }
         }
         .padding(.horizontal, 16)
@@ -140,7 +247,10 @@ struct CalendarWithActionsView: View {
                             selectedDate: $selectedDate,
                             currentDateType: currentDateType,
                             doDate: doDate,
-                            onDateSelected: onDateSelected,
+                            onDateSelected: { date in
+                                selectedDate = date
+                                onDateSelected?(date)
+                            },
                             isCurrentMonth: calendar.dp_isDate(monthData.date, inSameMonthAs: Date())
                         )
                         .id(monthData.id)
@@ -168,50 +278,12 @@ struct CalendarWithActionsView: View {
     
     private var actionButtons: some View {
         VStack(spacing: 8) {
-            // Today/Tomorrow buttons
-            HStack(spacing: 12) {
-                // Today button
-                Button {
-                    let today = Date()
-                    selectedDate = today
-                    onDateSelected(today)
-                    dismiss()
-                } label: {
-                    Label("Today", systemImage: "sun.max.fill")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.accentColor.opacity(0.1))
-                        .foregroundColor(.accentColor)
-                        .cornerRadius(8)
-                }
-                
-                // Tomorrow button
-                Button {
-                    if let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) {
-                        selectedDate = tomorrow
-                        onDateSelected(tomorrow)
-                        dismiss()
-                    }
-                } label: {
-                    Label("Tomorrow", systemImage: "moon.stars.fill")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.accentColor.opacity(0.1))
-                        .foregroundColor(.accentColor)
-                        .cornerRadius(8)
-                }
-            }
-            
             // Clear Date button (only shown when there's an existing date)
             if hasExistingDate {
                 Button {
                     onClearDate()
                 } label: {
-                    Label("Clear Date", systemImage: "xmark.circle")
+                    Label(clearButtonLabel, systemImage: "xmark.circle")
                         .font(.caption)
                         .fontWeight(.medium)
                         .frame(maxWidth: .infinity)
@@ -225,5 +297,20 @@ struct CalendarWithActionsView: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 12)
+    }
+    
+    // MARK: - Clear Button Label
+    
+    private var clearButtonLabel: String {
+        if currentDateType == .dueDate {
+            return "Clear due date"
+        } else {
+            // On doDate tab
+            if dueDate != nil {
+                return "Clear dates"
+            } else {
+                return "Clear do date"
+            }
+        }
     }
 }

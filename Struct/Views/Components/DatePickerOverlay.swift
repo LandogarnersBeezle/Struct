@@ -18,14 +18,22 @@ public enum DateType {
 struct DatePickerOverlay: View {
     @Binding var isPresented: Bool
     @Binding var selectedDate: Date
+    @Binding var datePickerType: DateType  // Binding to update the parent's date type
     let dateType: DateType
     let doDate: Date? // For validation when setting due date
-    let onDateSelected: ((Date) -> Void)?
+    let dueDate: Date? // The current due date value
+    let onSave: ((Date?, Date?) -> Void)?
+    let onCancel: (() -> Void)?
     let onClearDate: (() -> Void)?
-    let hasExistingDate: Bool
     
     @StateObject private var viewModel = DatePickerViewModel()
     @State private var currentDateType: DateType
+    @State private var tempSelectedDate: Date
+    @State private var tempDoDate: Date?
+    @State private var tempDueDate: Date?
+    @State private var validationAlert: String?
+    
+    private let calendar = Calendar.current
     
     /// Creates a new date picker overlay.
     /// - Parameters:
@@ -33,26 +41,35 @@ struct DatePickerOverlay: View {
     ///   - selectedDate: The currently selected date.
     ///   - dateType: The type of date being set (do date or due date).
     ///   - doDate: The existing do date, used for validation when setting due date.
-    ///   - onDateSelected: Closure called when a date is selected.
+    ///   - onSave: Closure called when save is tapped.
+    ///   - onCancel: Closure called when cancel is tapped.
     ///   - onClearDate: Closure called when the date is cleared.
     ///   - hasExistingDate: Whether there's an existing date to show the clear button.
     public init(
         isPresented: Binding<Bool>,
         selectedDate: Binding<Date>,
+        datePickerType: Binding<DateType>,
         dateType: DateType,
         doDate: Date?,
-        onDateSelected: ((Date) -> Void)?,
-        onClearDate: (() -> Void)?,
-        hasExistingDate: Bool
+        dueDate: Date?,
+        onSave: ((Date?, Date?) -> Void)?,
+        onCancel: (() -> Void)?,
+        onClearDate: (() -> Void)?
     ) {
         _isPresented = isPresented
         _selectedDate = selectedDate
+        _datePickerType = datePickerType
         self.dateType = dateType
         self.doDate = doDate
-        self.onDateSelected = onDateSelected
+        self.dueDate = dueDate
+        self.onSave = onSave
+        self.onCancel = onCancel
         self.onClearDate = onClearDate
-        self.hasExistingDate = hasExistingDate
         _currentDateType = State(initialValue: dateType)
+        _tempSelectedDate = State(initialValue: selectedDate.projectedValue.wrappedValue)
+        // Only set temp dates to existing values, not to the default Date()
+        _tempDoDate = State(initialValue: doDate)
+        _tempDueDate = State(initialValue: dueDate)
     }
     
     var body: some View {
@@ -61,7 +78,7 @@ struct DatePickerOverlay: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    dismiss()
+                    cancel()
                 }
                 .ignoresSafeArea()
             
@@ -69,20 +86,70 @@ struct DatePickerOverlay: View {
             VStack(spacing: 0) {
                 CalendarWithActionsView(
                     viewModel: viewModel,
-                    selectedDate: $selectedDate,
+                    selectedDate: $tempSelectedDate,
                     currentDateType: $currentDateType,
-                    doDate: doDate,
-                    onDateSelected: { date in
-                        selectedDate = date
-                        onDateSelected?(date)
+                    doDate: tempDoDate,
+                    dueDate: tempDueDate,
+                    onSave: {
+                        // Only update the binding if there's an actual date to save
+                        // (not the default Date() when no date was selected)
+                        if datePickerType == .doDate && tempDoDate != nil {
+                            selectedDate = tempSelectedDate
+                        } else if datePickerType == .dueDate && tempDueDate != nil {
+                            selectedDate = tempSelectedDate
+                        }
+                        onSave?(tempDoDate, tempDueDate)
                         dismiss()
+                    },
+                    onCancel: {
+                        cancel()
                     },
                     dismiss: dismiss,
                     onClearDate: {
-                        onClearDate?()
-                        dismiss()
+                        // Clear the appropriate date(s) based on current type
+                        if currentDateType == .dueDate {
+                            // Clear due date only
+                            tempDueDate = nil
+                        } else {
+                            // On doDate tab - clear do date and due date (since due date can't exist without do date)
+                            tempDoDate = nil
+                            tempDueDate = nil
+                        }
+                        // Reset selectedDate to remove highlight from calendar
+                        tempSelectedDate = Date()
                     },
-                    hasExistingDate: hasExistingDate
+                    hasExistingDate: tempDoDate != nil || tempDueDate != nil,
+                    onDateTypeChanged: { oldType, newType in
+                        // Update the parent's datePickerType to match
+                        datePickerType = newType
+                        
+                        if newType == .doDate && oldType == .dueDate {
+                            // Switching from dueDate to doDate - set selectedDate to the doDate value
+                            tempSelectedDate = tempDoDate ?? Date()
+                        } else if newType == .dueDate && oldType == .doDate {
+                            // Switching from doDate to dueDate - set selectedDate to the dueDate value
+                            tempSelectedDate = tempDueDate ?? Date()
+                        }
+                    },
+                    onDateSelected: { date in
+                        // Validate date constraints
+                        if currentDateType == .doDate {
+                            // Do date must be <= due date (if due date exists)
+                            if let dueDate = tempDueDate, calendar.compare(date, to: dueDate, toGranularity: .day) == .orderedDescending {
+                                // Selected do date is after due date, adjust due date
+                                tempDueDate = date
+                            }
+                            tempDoDate = date
+                        } else {
+                            // Due date must be >= do date (if do date exists)
+                            if let doDate = tempDoDate, calendar.compare(date, to: doDate, toGranularity: .day) == .orderedAscending {
+                                // Selected due date is before do date, adjust do date
+                                tempDoDate = date
+                            }
+                            tempDueDate = date
+                        }
+                        tempSelectedDate = date
+                    }
                 )
             }
             .padding(.horizontal)
@@ -90,6 +157,10 @@ struct DatePickerOverlay: View {
         }
         .onAppear {
             currentDateType = dateType
+            tempSelectedDate = selectedDate
+            // Only set temp dates to existing values, not to the default Date()
+            tempDoDate = doDate
+            tempDueDate = dueDate
             viewModel.scrollToDate(Date())
             dismissKeyboard()
         }
@@ -99,6 +170,11 @@ struct DatePickerOverlay: View {
         withAnimation(.easeInOut(duration: 0.25)) {
             isPresented = false
         }
+    }
+    
+    private func cancel() {
+        onCancel?()
+        dismiss()
     }
     
     private func dismissKeyboard() {
@@ -144,13 +220,17 @@ struct DatePickerOverlay: View {
                     DatePickerOverlay(
                         isPresented: $showDatePicker,
                         selectedDate: $selectedDate,
+                        datePickerType: .constant(DateType.doDate),
                         dateType: .doDate,
                         doDate: nil,
-                        onDateSelected: { date in
-                            print("Selected date: \(date)")
+                        dueDate: nil,
+                        onSave: { doDate, dueDate in
+                            print("Saved doDate: \(String(describing: doDate)), dueDate: \(String(describing: dueDate))")
                         },
-                        onClearDate: nil,
-                        hasExistingDate: false
+                        onCancel: {
+                            print("Cancelled")
+                        },
+                        onClearDate: nil
                     )
                     .transition(.opacity)
                 }
