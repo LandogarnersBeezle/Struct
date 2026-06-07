@@ -12,18 +12,22 @@ struct DayCell: View {
     let isSelected: Bool
     let isToday: Bool
     let isOtherMonth: Bool
+    let isDisabled: Bool
     let onTap: () -> Void
     
     var body: some View {
-        Button(action: onTap) {
+        Button(action: {
+            guard !isDisabled else { return }
+            onTap()
+        }) {
             ZStack {
                 if isSelected {
                     Circle()
-                        .fill(Color.accentColor)
+                        .fill(isDisabled ? Color.gray : Color.accentColor)
                         .frame(width: 36, height: 36)
                 } else if isToday {
                     Circle()
-                        .stroke(Color.accentColor, lineWidth: 2)
+                        .stroke(isDisabled ? Color.gray.opacity(0.5) : Color.accentColor, lineWidth: 2)
                         .frame(width: 36, height: 36)
                 }
                 
@@ -37,11 +41,13 @@ struct DayCell: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .opacity(isOtherMonth ? 0.3 : 1.0)
+        .opacity(isOtherMonth ? 0.3 : (isDisabled ? 0.3 : 1.0))
     }
     
     private var textColor: Color {
-        if isSelected {
+        if isDisabled {
+            return .gray
+        } else if isSelected {
             return .white
         } else if isToday {
             return Color.accentColor

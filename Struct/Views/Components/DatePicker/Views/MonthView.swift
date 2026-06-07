@@ -10,6 +10,8 @@ import SwiftUI
 struct MonthView: View {
     let monthData: MonthData
     @Binding var selectedDate: Date
+    let currentDateType: DateType
+    let doDate: Date?
     let onDateSelected: (Date) -> Void
     let isCurrentMonth: Bool
     
@@ -38,6 +40,8 @@ struct MonthView: View {
                     selectedDate: $selectedDate,
                     today: today,
                     monthData: monthData,
+                    currentDateType: currentDateType,
+                    doDate: doDate,
                     onDateSelected: onDateSelected
                 )
             }

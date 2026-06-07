@@ -250,7 +250,7 @@ struct ContainerFocusView: View {
                                 showTaskCreationCard = false
                             }
                         },
-                        onSave: { title, doDate in
+                        onSave: { title, doDate, dueDate in
                             // Animate the card out first
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                                 showTaskCreationCard = false
@@ -261,6 +261,7 @@ struct ContainerFocusView: View {
                                 let item = Item.create(in: modelContext,
                                                        title: title,
                                                        doDate: doDate,
+                                                       dueDate: dueDate,
                                                        sortIndex: nextItemSortIndex,
                                                        parent: parent)
                             }

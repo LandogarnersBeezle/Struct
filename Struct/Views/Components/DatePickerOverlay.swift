@@ -7,16 +7,53 @@
 
 import SwiftUI
 
+/// Type of date being selected
+public enum DateType {
+    case doDate
+    case dueDate
+}
+
 /// A reusable date selector overlay with infinite scrolling through months.
 /// Features vertical scrolling, month/year navigation, sticky headers, and lazy loading.
 struct DatePickerOverlay: View {
     @Binding var isPresented: Bool
     @Binding var selectedDate: Date
+    let dateType: DateType
+    let doDate: Date? // For validation when setting due date
     let onDateSelected: ((Date) -> Void)?
     let onClearDate: (() -> Void)?
     let hasExistingDate: Bool
     
     @StateObject private var viewModel = DatePickerViewModel()
+    @State private var currentDateType: DateType
+    
+    /// Creates a new date picker overlay.
+    /// - Parameters:
+    ///   - isPresented: Binding that controls whether the overlay is shown.
+    ///   - selectedDate: The currently selected date.
+    ///   - dateType: The type of date being set (do date or due date).
+    ///   - doDate: The existing do date, used for validation when setting due date.
+    ///   - onDateSelected: Closure called when a date is selected.
+    ///   - onClearDate: Closure called when the date is cleared.
+    ///   - hasExistingDate: Whether there's an existing date to show the clear button.
+    public init(
+        isPresented: Binding<Bool>,
+        selectedDate: Binding<Date>,
+        dateType: DateType,
+        doDate: Date?,
+        onDateSelected: ((Date) -> Void)?,
+        onClearDate: (() -> Void)?,
+        hasExistingDate: Bool
+    ) {
+        _isPresented = isPresented
+        _selectedDate = selectedDate
+        self.dateType = dateType
+        self.doDate = doDate
+        self.onDateSelected = onDateSelected
+        self.onClearDate = onClearDate
+        self.hasExistingDate = hasExistingDate
+        _currentDateType = State(initialValue: dateType)
+    }
     
     var body: some View {
         ZStack {
@@ -33,6 +70,8 @@ struct DatePickerOverlay: View {
                 CalendarWithActionsView(
                     viewModel: viewModel,
                     selectedDate: $selectedDate,
+                    currentDateType: $currentDateType,
+                    doDate: doDate,
                     onDateSelected: { date in
                         selectedDate = date
                         onDateSelected?(date)
@@ -50,6 +89,7 @@ struct DatePickerOverlay: View {
             .frame(maxWidth: 340, maxHeight: .infinity, alignment: .top)
         }
         .onAppear {
+            currentDateType = dateType
             viewModel.scrollToDate(Date())
             dismissKeyboard()
         }
@@ -104,6 +144,8 @@ struct DatePickerOverlay: View {
                     DatePickerOverlay(
                         isPresented: $showDatePicker,
                         selectedDate: $selectedDate,
+                        dateType: .doDate,
+                        doDate: nil,
                         onDateSelected: { date in
                             print("Selected date: \(date)")
                         },

@@ -10,6 +10,8 @@ import SwiftUI
 struct CalendarWithActionsView: View {
     @ObservedObject var viewModel: DatePickerViewModel
     @Binding var selectedDate: Date
+    @Binding var currentDateType: DateType
+    let doDate: Date? // For validation when setting due date
     let onDateSelected: (Date) -> Void
     let dismiss: () -> Void
     let onClearDate: () -> Void
@@ -29,6 +31,9 @@ struct CalendarWithActionsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            // Date type toggle buttons (Do Date / Deadline)
+            dateTypeToggleButtons
+            
             // Navigation header with month/year and arrows
             navigationHeader
             
@@ -50,6 +55,42 @@ struct CalendarWithActionsView: View {
         .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
     }
     
+    // MARK: - Date Type Toggle Buttons
+    
+    private var dateTypeToggleButtons: some View {
+        HStack(spacing: 12) {
+            // Do Date button
+            Button {
+                currentDateType = .doDate
+            } label: {
+                Label("Do Date", systemImage: "calendar.badge.clock")
+                    .font(.caption)
+                    .fontWeight(currentDateType == .doDate ? .semibold : .medium)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(currentDateType == .doDate ? Color.accentColor.opacity(0.2) : Color(.systemGray6))
+                    .foregroundColor(currentDateType == .doDate ? .accentColor : .primary)
+                    .cornerRadius(8)
+            }
+            
+            // Deadline button
+            Button {
+                currentDateType = .dueDate
+            } label: {
+                Label("Deadline", systemImage: "flag.fill")
+                    .font(.caption)
+                    .fontWeight(currentDateType == .dueDate ? .semibold : .medium)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(currentDateType == .dueDate ? Color.red.opacity(0.2) : Color(.systemGray6))
+                    .foregroundColor(currentDateType == .dueDate ? .red : .primary)
+                    .cornerRadius(8)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+    }
+    
     // MARK: - Search Header
     
     private var navigationHeader: some View {
@@ -66,7 +107,7 @@ struct CalendarWithActionsView: View {
         .background(Color(.systemGray6))
         .cornerRadius(8)
         .padding(.horizontal, 16)
-        .padding(.top, 12)
+        .padding(.top, 8)
         .background(Color(.systemBackground))
     }
     
@@ -97,6 +138,8 @@ struct CalendarWithActionsView: View {
                         MonthView(
                             monthData: monthData,
                             selectedDate: $selectedDate,
+                            currentDateType: currentDateType,
+                            doDate: doDate,
                             onDateSelected: onDateSelected,
                             isCurrentMonth: calendar.dp_isDate(monthData.date, inSameMonthAs: Date())
                         )

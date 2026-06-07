@@ -11,56 +11,110 @@ import SwiftData
 struct ItemRowView: View {
     let item: Item
     var isHighlighted: Bool = false
-
+    
+    private let calendar = Calendar.current
+    
     private var isOverdue: Bool {
         guard let due = item.dueDate, !item.isCompleted else { return false }
         return due < .now
     }
-
+    
+    // MARK: - Date Formatting Helper
+    
+    /// Formats a date according to the specified rules:
+    /// - Next 7 days: abbreviated weekday (Mon, Tue, Wed)
+    /// - Other days in current year: date + abbreviated month (7 Jun)
+    /// - Days in other years: full format with year (9 Oct 2027)
+    private func formattedDate(from date: Date) -> String {
+        let now = Date()
+        
+        // Check if date is within the next 7 days
+        let startOfToday = calendar.startOfDay(for: now)
+        let startOfDate = calendar.startOfDay(for: date)
+        if let startOfSevenDaysFromNow = calendar.date(byAdding: .day, value: 7, to: startOfToday),
+           startOfDate >= startOfToday,
+           startOfDate < startOfSevenDaysFromNow {
+            // Format as abbreviated weekday
+            let formatter = DateFormatter()
+            formatter.locale = .current
+            formatter.dateFormat = "EEE"
+            return formatter.string(from: date)
+        }
+        
+        // Check if date is in the current year
+        let currentYear = calendar.component(.year, from: now)
+        let dateYear = calendar.component(.year, from: date)
+        
+        if dateYear == currentYear {
+            // Format as date + abbreviated month (e.g., "7 Jun")
+            let formatter = DateFormatter()
+            formatter.locale = .current
+            formatter.dateFormat = "d MMM"
+            return formatter.string(from: date)
+        } else {
+            // Format with year (e.g., "9 Oct 2027")
+            let formatter = DateFormatter()
+            formatter.locale = .current
+            formatter.dateFormat = "d MMM yyyy"
+            return formatter.string(from: date)
+        }
+    }
+    
+    // MARK: - Date Chip View
+    
+    /// Creates a styled date chip with padded background
+    private func dateChip(for date: Date, color: Color, prefixIcon: String? = nil) -> some View {
+        HStack(spacing: 4) {
+            if let icon = prefixIcon {
+                Image(systemName: icon)
+                    .font(.caption2)
+            }
+            Text(formattedDate(from: date))
+                .font(.caption)
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(color.opacity(0.1))
+        .cornerRadius(6)
+    }
+    
     var body: some View {
         HStack(alignment: .top, spacing: 4) {
             // Completion indicator
             Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(item.isCompleted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                 .padding(.top, 1)
-
+            
             VStack(alignment: .leading, spacing: 5) {
-                // Title
-                Text(item.title)
-                    .strikethrough(item.isCompleted)
-                    .foregroundStyle(item.isCompleted ? .secondary : .primary)
-
+                // Title line with inline dates
+                HStack(spacing: 8) {
+                    // Do date (positioned at the beginning)
+                    if let doDate = item.doDate {
+                        dateChip(for: doDate, color: .accentColor)
+                    }
+                    
+                    // Title
+                    Text(item.title)
+                        .strikethrough(item.isCompleted)
+                        .foregroundStyle(item.isCompleted ? .secondary : .primary)
+                    
+                    Spacer(minLength: 0)
+                    
+                    // Due date (positioned at the end, with flag icon)
+                    if let dueDate = item.dueDate {
+                        dateChip(for: dueDate, color: isOverdue ? .red : .secondary, prefixIcon: "flag.fill")
+                    }
+                }
+                
                 // Notes
                 if !item.notes.isEmpty {
                     Text(item.notes)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-
-                // Date chips
-                if item.doDate != nil || item.dueDate != nil {
-                    HStack(spacing: 10) {
-                        if let doDate = item.doDate {
-                            Label {
-                                Text(doDate, style: .date)
-                            } icon: {
-                                Image(systemName: "calendar")
-                            }
-                            .foregroundStyle(.secondary)
-                        }
-                        if let dueDate = item.dueDate {
-                            Label {
-                                Text(dueDate, style: .date)
-                            } icon: {
-                                Image(systemName: "flag.fill")
-                            }
-                            .foregroundStyle(isOverdue ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-                        }
-                    }
-                    .padding(.top, 1)
-                }
             }
-
+            
             Spacer(minLength: 0)
         }
         .padding(12)
@@ -82,33 +136,44 @@ struct ItemRowView: View {
     )
     let context = container.mainContext
     List.ensureInbox(in: context)
-
+    
     // Plain item — no dates, no notes
     let plain = Item(title: "Pick up dry cleaning")
-
+    
     // Scheduled + due date, with notes
     let full = Item(title: "Book moving truck",
                     notes: "Compare at least three quotes before booking.",
                     doDate: .now.addingTimeInterval(86_400 * 2),
                     dueDate: .now.addingTimeInterval(86_400 * 7))
-
+    
     // Overdue item
     let overdue = Item(title: "Submit tax return",
                        dueDate: .now.addingTimeInterval(-86_400 * 2))
-
+    
     // Completed item
     let done = Item(title: "Reply to landlord",
                     doDate: .now.addingTimeInterval(-86_400))
     done.isCompleted = true
-
-    for item in [plain, full, overdue, done] { context.insert(item) }
-
+    
+    // Item with date in current year but beyond 7 days
+    let laterThisYear = Item(title: "Schedule annual checkup",
+                             doDate: .now.addingTimeInterval(86_400 * 30))
+    
+    // Item with date in a different year
+    let nextYear = Item(title: "Renew passport",
+                        doDate: .now.addingTimeInterval(86_400 * 400),
+                        dueDate: .now.addingTimeInterval(86_400 * 450))
+    
+    for item in [plain, full, overdue, done, laterThisYear, nextYear] { context.insert(item) }
+    
     return ScrollView {
         LazyVStack(spacing: 10) {
             ItemRowView(item: plain)
             ItemRowView(item: full)
             ItemRowView(item: overdue)
             ItemRowView(item: done)
+            ItemRowView(item: laterThisYear)
+            ItemRowView(item: nextYear)
         }
         .padding()
     }

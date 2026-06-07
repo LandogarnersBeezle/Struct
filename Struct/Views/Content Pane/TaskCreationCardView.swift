@@ -13,27 +13,30 @@ import SwiftData
 /// buttons and a date picker.
 struct TaskCreationCardView: View {
     let onCancel: () -> Void
-    let onSave: (String, Date) -> Void
+    let onSave: (String, Date?, Date?) -> Void
 
     @State private var title: String = ""
-    @State private var selectedDate: Date = Date()
+    @State private var doDate: Date? = nil
+    @State private var dueDate: Date? = nil
     @State private var showDatePicker: Bool = false
-    @State private var hasSelectedDate: Bool = false
-    @State private var existingDate: Date? = nil
+    @State private var datePickerType: DateType = .doDate
+    @State private var hasSelectedDoDate: Bool = false
+    @State private var hasSelectedDueDate: Bool = false
     @FocusState private var isTitleFocused: Bool
 
     var body: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 12) {
-                // Title field with calendar icon / date display
+                // Title field with calendar icon / date display and deadline icon
                 HStack(spacing: 8) {
-                    // Calendar icon button that shows selected date when set
+                    // Do Date icon button
                     Button {
+                        datePickerType = .doDate
                         showDatePicker = true
                     } label: {
-                        if hasSelectedDate {
+                        if hasSelectedDoDate, let doDate = doDate {
                             // Show formatted date
-                            Text(selectedDate, style: .date)
+                            Text(doDate, style: .date)
                                 .font(.caption)
                                 .foregroundColor(.accentColor)
                                 .padding(6)
@@ -58,6 +61,35 @@ struct TaskCreationCardView: View {
                         .onAppear {
                             isTitleFocused = true
                         }
+                    
+                    Spacer()
+                    
+                    // Deadline icon button (only shown when do date is set)
+                    if hasSelectedDoDate {
+                        Button {
+                            datePickerType = .dueDate
+                            showDatePicker = true
+                        } label: {
+                            if hasSelectedDueDate, let dueDate = dueDate {
+                                // Show formatted date with red color
+                                Text(dueDate, style: .date)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .padding(6)
+                                    .padding(.horizontal, 2)
+                                    .background(Color.red.opacity(0.1))
+                                    .cornerRadius(6)
+                            } else {
+                                // Show flag icon
+                                Image(systemName: "flag.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .padding(6)
+                                    .background(Color.red.opacity(0.1))
+                                    .cornerRadius(6)
+                            }
+                        }
+                    }
                 }
 
                 // Buttons
@@ -70,7 +102,7 @@ struct TaskCreationCardView: View {
                     .buttonStyle(.bordered)
 
                     Button {
-                        onSave(title, selectedDate)
+                        onSave(title, doDate, dueDate)
                     } label: {
                         Image(systemName: "checkmark")
                     }
@@ -95,18 +127,38 @@ struct TaskCreationCardView: View {
                     Spacer(minLength: 140) // Push overlay below the card with gap
                     DatePickerOverlay(
                         isPresented: $showDatePicker,
-                        selectedDate: $selectedDate,
-                        onDateSelected: { _ in
-                            hasSelectedDate = true
-                            existingDate = selectedDate
+                        selectedDate: Binding(
+                            get: { datePickerType == .doDate ? (doDate ?? Date()) : (dueDate ?? Date()) },
+                            set: { newValue in
+                                if datePickerType == .doDate {
+                                    doDate = newValue
+                                } else {
+                                    dueDate = newValue
+                                }
+                            }
+                        ),
+                        dateType: datePickerType,
+                        doDate: doDate,
+                        onDateSelected: { date in
+                            if datePickerType == .doDate {
+                                doDate = date
+                                hasSelectedDoDate = true
+                            } else {
+                                dueDate = date
+                                hasSelectedDueDate = true
+                            }
                             showDatePicker = false
                         },
                         onClearDate: {
-                            hasSelectedDate = false
-                            existingDate = nil
-                            selectedDate = Date()
+                            if datePickerType == .doDate {
+                                hasSelectedDoDate = false
+                                doDate = nil
+                            } else {
+                                hasSelectedDueDate = false
+                                dueDate = nil
+                            }
                         },
-                        hasExistingDate: hasSelectedDate
+                        hasExistingDate: datePickerType == .doDate ? hasSelectedDoDate : hasSelectedDueDate
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     Spacer()
@@ -115,13 +167,14 @@ struct TaskCreationCardView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showDatePicker)
+        .animation(.easeInOut(duration: 0.2), value: hasSelectedDoDate)
     }
 }
 
 #Preview {
     TaskCreationCardView(
         onCancel: {},
-        onSave: { _, _ in }
+        onSave: { _, _, _ in }
     )
     .padding()
 }
