@@ -100,7 +100,7 @@ class ContainerFocusViewModel: ObservableObject {
     ///   - allContainers: All available containers
     ///   - searchText: Current search text
     /// - Returns: Filtered list of containers matching the search text
-    func filteredContainers(from allContainers: [SearchEntry]) -> [SearchEntry] {
+    func filteredContainers(from allContainers: [SearchEntry], searchText: String) -> [SearchEntry] {
         let q = searchText.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return allContainers }
         return allContainers.filter { $0.target.title.localizedCaseInsensitiveContains(q) }

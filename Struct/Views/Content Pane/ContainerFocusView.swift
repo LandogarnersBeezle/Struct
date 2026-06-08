@@ -20,6 +20,12 @@ struct ContainerFocusView: View {
     @StateObject private var viewModel: ContainerFocusViewModel
     @State private var showTaskCreationCard: Bool = false
     @State private var isDatePickerShown: Bool = false
+    @State private var selectedTaskContainer: ContainerTarget? = nil
+    @State private var showContainerSelector: Bool = false
+    @State private var containerSelectorSearchText: String = ""
+    @State private var cardSelectedContainer: ContainerTarget? = nil
+    @State private var shouldFocusFilterSearch: Bool = false
+    @FocusState private var isContainerSearchFocused: Bool
 
     // MARK: - Data Queries
 
@@ -248,15 +254,32 @@ struct ContainerFocusView: View {
             .overlay(alignment: .top) {
                 if showTaskCreationCard {
                     TaskCreationCardView(
+                        targetContainer: target,
+                        allContainers: allContainers,
+                        viewModel: viewModel,
+                        onContainerSelect: { newTarget in
+                            selectedTaskContainer = newTarget
+                        },
                         onCancel: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                                 showTaskCreationCard = false
+                                selectedTaskContainer = nil
                             }
                         },
                         onDatePickerVisibilityChanged: { isShown in
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 isDatePickerShown = isShown
                             }
+                        },
+                        onShowContainerSelector: {
+                            showContainerSelector = true
+                        },
+                        onContainerSelected: { newTarget in
+                            cardSelectedContainer = newTarget
+                        },
+                        selectedContainerBinding: $cardSelectedContainer,
+                        onFocusFilterSearch: {
+                            shouldFocusFilterSearch = true
                         },
                         onSave: { title, doDate, dueDate in
                             // Animate the card out first
@@ -265,17 +288,73 @@ struct ContainerFocusView: View {
                             }
                             // After the card finishes dismissing, insert the item
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                                guard let parent = parentForTarget() else { return }
+                                // Use the selected container if one was chosen, otherwise use the current target
+                                let saveTarget = selectedTaskContainer ?? target
+                                let parent: ItemParent
+                                switch saveTarget {
+                                case .space(let s): parent = .space(s)
+                                case .project(let p): parent = .project(p)
+                                case .list(let l): parent = .list(l)
+                                }
+                                let itemSortIndex = (saveTarget.items.map(\.sortIndex).max() ?? -1) + 1
                                 let item = Item.create(in: modelContext,
                                                        title: title,
                                                        doDate: doDate,
                                                        dueDate: dueDate,
-                                                       sortIndex: nextItemSortIndex,
+                                                       sortIndex: itemSortIndex,
                                                        parent: parent)
+                                selectedTaskContainer = nil
                             }
                         }
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            // Container selector overlay (for breadcrumb in task creation card)
+            .onChange(of: shouldFocusFilterSearch) { _, newValue in
+                if newValue {
+                    isContainerSearchFocused = true
+                    shouldFocusFilterSearch = false
+                }
+            }
+            .overlay {
+                if showContainerSelector {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                showContainerSelector = false
+                                isContainerSearchFocused = false
+                                containerSelectorSearchText = ""
+                            }
+                        }
+                        .overlay(alignment: .top) {
+                            VStack(spacing: 0) {
+                                Color.clear.frame(height: 100)
+                                VStack(alignment: .leading, spacing: 0) {
+                                    FilterSearchField(searchText: $containerSelectorSearchText, isFocused: $isContainerSearchFocused)
+                                    FilterResultsView(entries: viewModel.filteredContainers(from: allContainers, searchText: containerSelectorSearchText), onSelect: { targetContainer in
+                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                            showContainerSelector = false
+                                            isContainerSearchFocused = false
+                                            containerSelectorSearchText = ""
+                                        }
+                                        selectedTaskContainer = targetContainer
+                                        cardSelectedContainer = targetContainer
+                                    })
+                                }
+                                .frame(maxHeight: 300)
+                                .padding()
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(UIColor.systemBackground))
+                                        .shadow(color: Color.black.opacity(0.2), radius: 16, x: 0, y: 8)
+                                )
+                                .padding(.horizontal, 16)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
             }
         }

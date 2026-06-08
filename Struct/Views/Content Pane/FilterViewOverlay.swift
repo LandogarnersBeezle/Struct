@@ -19,27 +19,24 @@ struct FilterViewOverlay: View {
     @FocusState private var isSearchFocused: Bool
     
     private var filteredContainers: [ContainerFocusViewModel.SearchEntry] {
-        viewModel.filteredContainers(from: allContainers)
+        viewModel.filteredContainers(from: allContainers, searchText: searchText)
     }
     
     var body: some View {
-        ZStack {
-            // Blurred background - avoids safe area transition issues
-            Color.clear
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    onClose()
-                }
-                .overlay {
-                    // Blur effect applied to the entire background
-                    VisualEffectBlur(blurStyle: .systemMaterial)
-                        .ignoresSafeArea()
-                }
-            
-            // Filter card at the top
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(spacing: 0) {
+        // Full-screen background that captures taps outside the card
+        Color.clear
+            .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onClose()
+            }
+            .overlay {
+                // Blur effect
+                VisualEffectBlur(blurStyle: .extraLight)
+                    .ignoresSafeArea()
+                
+                // Card positioned at top
+                VStack(alignment: .leading, spacing: 0) {
                     FilterSearchField(searchText: $searchText, isFocused: $isSearchFocused)
                     
                     FilterResultsView(entries: filteredContainers, onSelect: { target in
@@ -54,12 +51,11 @@ struct FilterViewOverlay: View {
                         .fill(Color(UIColor.systemBackground))
                         .shadow(color: Color.black.opacity(0.2), radius: 16, x: 0, y: 8)
                 )
-                .padding(.horizontal)
-                
-                Spacer()
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                // Block tap propagation from the card area
+                .compositingGroup()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        }
         .onAppear {
             // Focus the search field after a tiny delay to ensure smooth animation
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {

@@ -12,9 +12,21 @@ import SwiftData
 /// when the user taps the + button. Contains a title field with Cancel / Save
 /// buttons and a date picker.
 struct TaskCreationCardView: View {
+    let targetContainer: ContainerTarget
+    let allContainers: [ContainerFocusViewModel.SearchEntry]
+    let viewModel: ContainerFocusViewModel
+    let onContainerSelect: (ContainerTarget) -> Void
     let onCancel: () -> Void
     /// Callback to notify parent when date picker visibility changes (for blurring background)
     let onDatePickerVisibilityChanged: ((Bool) -> Void)?
+    /// Callback to notify parent when container selector should be shown
+    let onShowContainerSelector: () -> Void
+    /// Callback to update the selected container when chosen from the filter overlay
+    let onContainerSelected: ((ContainerTarget) -> Void)?
+    /// Binding to receive updates from parent about selected container
+    let selectedContainerBinding: Binding<ContainerTarget?>
+    /// Callback to notify parent that filter search should be focused
+    let onFocusFilterSearch: () -> Void
     let onSave: (String, Date?, Date?) -> Void
 
     @State private var title: String = ""
@@ -24,9 +36,37 @@ struct TaskCreationCardView: View {
     @State private var datePickerType: DateType = .doDate
     @State private var hasSelectedDoDate: Bool = false
     @State private var hasSelectedDueDate: Bool = false
+    @State private var selectedContainer: ContainerTarget
     @FocusState private var isTitleFocused: Bool
     
     private let calendar = Calendar.current
+    
+    init(
+        targetContainer: ContainerTarget,
+        allContainers: [ContainerFocusViewModel.SearchEntry],
+        viewModel: ContainerFocusViewModel,
+        onContainerSelect: @escaping (ContainerTarget) -> Void,
+        onCancel: @escaping () -> Void,
+        onDatePickerVisibilityChanged: ((Bool) -> Void)?,
+        onShowContainerSelector: @escaping () -> Void,
+        onContainerSelected: ((ContainerTarget) -> Void)? = nil,
+        selectedContainerBinding: Binding<ContainerTarget?>,
+        onFocusFilterSearch: @escaping () -> Void = {},
+        onSave: @escaping (String, Date?, Date?) -> Void
+    ) {
+        self.targetContainer = targetContainer
+        self.allContainers = allContainers
+        self.viewModel = viewModel
+        self.onContainerSelect = onContainerSelect
+        self.onCancel = onCancel
+        self.onDatePickerVisibilityChanged = onDatePickerVisibilityChanged
+        self.onShowContainerSelector = onShowContainerSelector
+        self.onContainerSelected = onContainerSelected
+        self.selectedContainerBinding = selectedContainerBinding
+        self.onFocusFilterSearch = onFocusFilterSearch
+        self.onSave = onSave
+        _selectedContainer = State(initialValue: targetContainer)
+    }
     
     // MARK: - Date Formatting Helper
     
@@ -34,6 +74,93 @@ struct TaskCreationCardView: View {
     /// See `DateFormatter.formattedDate(from:calendar:)` for formatting rules.
     private func formattedDate(from date: Date) -> String {
         DateFormatter.formattedDate(from: date, calendar: calendar)
+    }
+    
+    // MARK: - Breadcrumb Helpers
+    
+    /// Builds the breadcrumb view for the currently selected container.
+    @ViewBuilder
+    private var breadcrumbView: some View {
+        switch selectedContainer {
+        case .space(let space):
+            spaceBreadcrumb(space: space)
+        case .list(let list):
+            listBreadcrumb(list: list)
+        case .project(let project):
+            projectBreadcrumb(project: project)
+        }
+    }
+    
+    /// A tappable breadcrumb button that shows the current container and opens the selector when tapped.
+    private var breadcrumbButton: some View {
+        Button {
+            onShowContainerSelector()
+            onFocusFilterSearch()
+        } label: {
+            breadcrumbView
+        }
+        .buttonStyle(.plain)
+        .onChange(of: selectedContainer) { _, newValue in
+            onContainerSelected?(newValue)
+        }
+        .onChange(of: selectedContainerBinding.wrappedValue) { _, newValue in
+            if let newTarget = newValue {
+                selectedContainer = newTarget
+            }
+        }
+    }
+    
+    private func spaceBreadcrumb(space: Space) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: space.symbolName)
+                .font(.caption2)
+                .foregroundColor(Space.containerColor)
+            Text(space.name)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    private func listBreadcrumb(list: List) -> some View {
+        HStack(spacing: 4) {
+            if let space = list.space {
+                Image(systemName: space.symbolName)
+                    .font(.caption2)
+                    .foregroundColor(Space.containerColor)
+                Text(space.name)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Text("/")
+                    .font(.caption2)
+                    .foregroundColor(Color.gray.opacity(0.5))
+            }
+            Image(systemName: list.kind == .inbox ? "tray" : "list.bullet")
+                .font(.caption2)
+                .foregroundColor(List.containerColor)
+            Text(list.title)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    private func projectBreadcrumb(project: Project) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: project.space.symbolName)
+                .font(.caption2)
+                .foregroundColor(Space.containerColor)
+            Text(project.space.name)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text("/")
+                .font(.caption2)
+                .foregroundColor(Color.gray.opacity(0.5))
+            Image(systemName: "folder")
+                .font(.caption2)
+                .foregroundColor(Project.containerColor)
+            Text(project.title)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
     }
 
     var body: some View {
@@ -103,6 +230,11 @@ struct TaskCreationCardView: View {
                         }
                     }
                 }
+
+                // Container breadcrumb (tappable to change destination)
+                breadcrumbButton
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
 
                 // Buttons
                 HStack(spacing: 12) {
@@ -216,8 +348,16 @@ struct TaskCreationCardView: View {
 
 #Preview {
     TaskCreationCardView(
+        targetContainer: .space(Space(name: "Personal", sortIndex: 0)),
+        allContainers: [],
+        viewModel: ContainerFocusViewModel(),
+        onContainerSelect: { _ in },
         onCancel: {},
         onDatePickerVisibilityChanged: nil,
+        onShowContainerSelector: {},
+        onContainerSelected: nil,
+        selectedContainerBinding: .constant(nil),
+        onFocusFilterSearch: {},
         onSave: { _, _, _ in }
     )
     .padding()
