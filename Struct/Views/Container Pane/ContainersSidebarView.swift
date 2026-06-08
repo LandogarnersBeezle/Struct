@@ -61,6 +61,10 @@ struct ContainersSidebarView: View {
 
     @State private var drag           = SidebarDragState()
     @State private var swipeSelection = SidebarSwipeSelection()
+    
+    // MARK: Add menu state
+    
+    @State private var isAddMenuOpen = false
 
     // MARK: Body
 
@@ -422,19 +426,125 @@ struct ContainersSidebarView: View {
     // MARK: - Add menu
 
     private var addMenu: some View {
-        Menu {
-            Button("New Space",   systemImage: "square.grid.2x2") { pendingCreate = .space }
-            Button("New List",    systemImage: "list.bullet")     { pendingCreate = .list }
-            Button("New Project", systemImage: "folder")          { pendingCreate = .project }
-        } label: {
-            Image(systemName: "plus")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(Circle().fill(Color.accentColor))
-                .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+        ZStack(alignment: .bottomTrailing) {
+            // Overlay to dismiss when tapping outside
+            if isAddMenuOpen {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isAddMenuOpen = false
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .offset(x: -60, y: -60)
+            }
+            
+            HStack {
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 8) {
+                    // Menu buttons (shown when open)
+                    if isAddMenuOpen {
+                        VStack(alignment: .trailing, spacing: 8) {
+                            // Add Space button (always visible)
+                            MenuButton(
+                                title: "Add Space",
+                                systemImage: "square.grid.2x2",
+                                color: Space.containerColor,
+                                width: menuButtonWidth
+                            ) {
+                                pendingCreate = .space
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isAddMenuOpen = false
+                                }
+                            }
+                            
+                            // Add List button (only when at least one space exists)
+                            if !spaces.isEmpty {
+                                MenuButton(
+                                    title: "Add List",
+                                    systemImage: "list.bullet",
+                                    color: List.containerColor,
+                                    width: menuButtonWidth
+                                ) {
+                                    pendingCreate = .list
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        isAddMenuOpen = false
+                                    }
+                                }
+                            }
+                            
+                            // Add Project button (only when at least one space exists)
+                            if !spaces.isEmpty {
+                                MenuButton(
+                                    title: "Add Project",
+                                    systemImage: "folder",
+                                    color: Project.containerColor,
+                                    width: menuButtonWidth
+                                ) {
+                                    pendingCreate = .project
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        isAddMenuOpen = false
+                                    }
+                                }
+                            }
+                        }
+                        .transition(.opacity)
+                    }
+                    
+                    // Toggle button (plus when closed, X when open)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isAddMenuOpen.toggle()
+                        }
+                    } label: {
+                        Image(systemName: isAddMenuOpen ? "xmark" : "plus")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Circle().fill(Color.accentColor))
+                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
-        .buttonStyle(.plain)
+    }
+    
+    /// Fixed width for all menu buttons to ensure uniform sizing.
+    private var menuButtonWidth: CGFloat { 160 }
+    
+    // MARK: - Menu Button Component
+    
+    private struct MenuButton: View {
+        let title: String
+        let systemImage: String
+        let color: Color
+        let width: CGFloat
+        let action: () -> Void
+        
+        var body: some View {
+            Button(action: action) {
+                HStack(spacing: 8) {
+                    Image(systemName: systemImage)
+                        .foregroundStyle(.white)
+                        .frame(width: 20)
+                    Text(title)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.white)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(width: width, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(color)
+                        .shadow(color: color.opacity(0.3), radius: 4, x: 0, y: 2)
+                )
+            }
+            .buttonStyle(.plain)
+        }
     }
     
     // MARK: - Delete Helpers
