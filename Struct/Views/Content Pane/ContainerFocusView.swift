@@ -19,6 +19,7 @@ struct ContainerFocusView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var viewModel: ContainerFocusViewModel
     @State private var showTaskCreationCard: Bool = false
+    @State private var isDatePickerShown: Bool = false
 
     // MARK: - Data Queries
 
@@ -220,6 +221,8 @@ struct ContainerFocusView: View {
                     ))
                 }
             }
+            .blur(radius: isDatePickerShown ? 4 : 0)
+            .animation(.easeInOut(duration: 0.2), value: isDatePickerShown)
             .animation(.spring(response: 0.25, dampingFraction: 0.8, blendDuration: 0), value: viewModel.showFilterView)
             .overlay(alignment: .leading) {
                 swipeBackOverlay
@@ -248,6 +251,11 @@ struct ContainerFocusView: View {
                         onCancel: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                                 showTaskCreationCard = false
+                            }
+                        },
+                        onDatePickerVisibilityChanged: { isShown in
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isDatePickerShown = isShown
                             }
                         },
                         onSave: { title, doDate, dueDate in
@@ -300,7 +308,7 @@ struct ContainerFocusView: View {
     context.insert(spaceSection)
     Item.create(in: context, title: "Section task 1 (unscheduled)", sortIndex: 0, parent: .taskSection(spaceSection))
     Item.create(in: context, title: "Section task 2 (unscheduled)", sortIndex: 1, parent: .taskSection(spaceSection))
-    Item.create(in: context, title: "Section task 3 (scheduled)", doDate: .now.addingTimeInterval(86_400 * 3), sortIndex: 2, parent: .taskSection(spaceSection))
+    Item.create(in: context, title: "Section task 3 (scheduled)", doDate: .now.addingTimeInterval(86_400 * 42), sortIndex: 2, parent: .taskSection(spaceSection))
     
     // Create a List within the space
     let list = List(title: "Groceries", space: space, sortIndex: 0)

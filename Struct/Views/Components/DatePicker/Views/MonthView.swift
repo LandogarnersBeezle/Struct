@@ -12,6 +12,7 @@ struct MonthView: View {
     @Binding var selectedDate: Date
     let currentDateType: DateType
     let doDate: Date?
+    let hasSelectedDate: Bool
     let onDateSelected: (Date) -> Void
     let isCurrentMonth: Bool
     
@@ -42,6 +43,7 @@ struct MonthView: View {
                     monthData: monthData,
                     currentDateType: currentDateType,
                     doDate: doDate,
+                    hasSelectedDate: hasSelectedDate,
                     onDateSelected: onDateSelected
                 )
             }

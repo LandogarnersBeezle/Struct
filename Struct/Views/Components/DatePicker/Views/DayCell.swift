@@ -28,6 +28,7 @@ struct DayCell: View {
                 } else if isToday {
                     Circle()
                         .stroke(isDisabled ? Color.gray.opacity(0.5) : Color.accentColor, lineWidth: 2)
+                        .opacity(0.4)
                         .frame(width: 36, height: 36)
                 }
                 

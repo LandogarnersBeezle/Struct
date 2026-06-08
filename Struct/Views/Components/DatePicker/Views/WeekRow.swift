@@ -14,6 +14,7 @@ struct WeekRow: View {
     let monthData: MonthData
     let currentDateType: DateType
     let doDate: Date?
+    let hasSelectedDate: Bool
     let onDateSelected: (Date) -> Void
     
     private let calendar = Calendar.current
@@ -47,7 +48,7 @@ struct WeekRow: View {
                 
                 if let date = dayData {
                     let day = calendar.component(.day, from: date)
-                    let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
+                    let isSelected = hasSelectedDate && calendar.isDate(date, inSameDayAs: selectedDate)
                     let isTodayDate = calendar.isDate(date, inSameDayAs: today)
                     let isOtherMonth = !calendar.dp_isDate(date, inSameMonthAs: monthData.date)
                     let isDisabled = isDateDisabled(date)

@@ -13,6 +13,8 @@ import SwiftData
 /// buttons and a date picker.
 struct TaskCreationCardView: View {
     let onCancel: () -> Void
+    /// Callback to notify parent when date picker visibility changes (for blurring background)
+    let onDatePickerVisibilityChanged: ((Bool) -> Void)?
     let onSave: (String, Date?, Date?) -> Void
 
     @State private var title: String = ""
@@ -28,43 +30,10 @@ struct TaskCreationCardView: View {
     
     // MARK: - Date Formatting Helper
     
-    /// Formats a date according to the specified rules:
-    /// - Next 7 days: abbreviated weekday (Mon, Tue, Wed)
-    /// - Other days in current year: date + abbreviated month (7 Jun)
-    /// - Days in other years: full format with year (9 Oct 2027)
+    /// Formats a date using the shared DateFormatter utility.
+    /// See `DateFormatter.formattedDate(from:calendar:)` for formatting rules.
     private func formattedDate(from date: Date) -> String {
-        let now = Date()
-        
-        // Check if date is within the next 7 days
-        let startOfToday = calendar.startOfDay(for: now)
-        let startOfDate = calendar.startOfDay(for: date)
-        if let startOfSevenDaysFromNow = calendar.date(byAdding: .day, value: 7, to: startOfToday),
-           startOfDate >= startOfToday,
-           startOfDate < startOfSevenDaysFromNow {
-            // Format as abbreviated weekday
-            let formatter = DateFormatter()
-            formatter.locale = .current
-            formatter.dateFormat = "EEE"
-            return formatter.string(from: date)
-        }
-        
-        // Check if date is in the current year
-        let currentYear = calendar.component(.year, from: now)
-        let dateYear = calendar.component(.year, from: date)
-        
-        if dateYear == currentYear {
-            // Format as date + abbreviated month (e.g., "7 Jun")
-            let formatter = DateFormatter()
-            formatter.locale = .current
-            formatter.dateFormat = "d MMM"
-            return formatter.string(from: date)
-        } else {
-            // Format with year (e.g., "9 Oct 2027")
-            let formatter = DateFormatter()
-            formatter.locale = .current
-            formatter.dateFormat = "d MMM yyyy"
-            return formatter.string(from: date)
-        }
+        DateFormatter.formattedDate(from: date, calendar: calendar)
     }
 
     var body: some View {
@@ -158,6 +127,10 @@ struct TaskCreationCardView: View {
             .background {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(.background)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.gray, lineWidth: 0.5)
+                    )
                     .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 2)
             }
             .padding(.horizontal, 16)
@@ -226,6 +199,7 @@ struct TaskCreationCardView: View {
                         }
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .padding(.top, 50)
                     Spacer()
                 }
                 .transition(.opacity)
@@ -234,12 +208,16 @@ struct TaskCreationCardView: View {
         .animation(.easeInOut(duration: 0.2), value: showDatePicker)
         .animation(.easeInOut(duration: 0.2), value: hasSelectedDoDate)
         .animation(.easeInOut(duration: 0.2), value: hasSelectedDueDate)
+        .onChange(of: showDatePicker) { _, newValue in
+            onDatePickerVisibilityChanged?(newValue)
+        }
     }
 }
 
 #Preview {
     TaskCreationCardView(
         onCancel: {},
+        onDatePickerVisibilityChanged: nil,
         onSave: { _, _, _ in }
     )
     .padding()
