@@ -210,6 +210,7 @@ struct SpaceSectionView: View {
 
     private func handleTap(_ child: ContainerChild) {
         if !drag.isDragging, !drag.justEndedDrag, !swipeSelection.justTriggered {
+            swipeSelection.clear()
             onSelect(child.target)
         }
     }

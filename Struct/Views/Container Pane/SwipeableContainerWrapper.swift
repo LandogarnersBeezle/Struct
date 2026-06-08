@@ -14,7 +14,7 @@ import SwiftData
 ///
 /// Owned as @State in ContainersSidebarView and injected into the view
 /// hierarchy via .environment.  When active is non-nil the sidebar
-/// replaces its add button with ContainerActionBar.
+/// replaces its add button with a circular delete button.
 @Observable
 final class SidebarSwipeSelection {
     var active: SwipeableContainerKind? = nil
@@ -62,144 +62,46 @@ enum SwipeableContainerKind {
     case space(Space)
 }
 
-// MARK: - ContainerActionBar
+// MARK: - ContainerDeleteButton
 
-/// Bottom action bar that replaces the add button when a container row is
-/// swipe-selected.  Owns the rename alert and delete confirmation dialog.
-struct ContainerActionBar: View {
+/// Circular delete button that replaces the add button when a container row is
+/// swipe-selected.  Triggers the delete alert which is managed by the parent.
+struct ContainerDeleteButton: View {
 
     @Environment(SidebarSwipeSelection.self) private var selection
     @Environment(\.modelContext)             private var context
 
     // MARK: State
 
-    @State private var isRenaming       = false
-    @State private var renameText       = ""
-    @State private var showDeleteDialog = false
-    @State private var hasOpenTasks     = false
-    @State private var actionError: DataError?
+    @State private var hasOpenTasks = false
 
     // MARK: Body
 
     var body: some View {
-        HStack(spacing: 12) {
-            actionButton("Rename", icon: "pencil", tint: .blue) { startRename()    }
-            actionButton("Delete", icon: "trash",  tint: .red)  { initiateDelete() }
+        Button(action: initiateDelete) {
+            Image(systemName: "trash")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(Color.red))
+                .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
         }
-        .frame(height: 56)
-        .alert("Rename", isPresented: $isRenaming) {
-            TextField("Name", text: $renameText)
-                .autocorrectionDisabled()
-            Button("Save")                  { saveRename()  }
-            Button("Cancel", role: .cancel) {}
-        }
-        .confirmationDialog(deleteTitle,
-                            isPresented: $showDeleteDialog,
-                            titleVisibility: .visible) {
-            if hasOpenTasks {
-                Button("Move Open Tasks to Inbox")       { performDelete(moveToInbox: true)  }
-                Button("Delete All", role: .destructive) { performDelete(moveToInbox: false) }
-            } else {
-                Button("Delete", role: .destructive)     { performDelete(moveToInbox: false) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            if hasOpenTasks { Text("Some tasks are still open. Choose how to handle them.") }
-        }
-        .errorAlert($actionError) {
-            // Clear selection when error is dismissed to reset state
-            selection.clear()
-        }
-    }
-
-    // MARK: - Button layout
-
-    @ViewBuilder
-    private func actionButton(_ label: String, icon: String, tint: Color,
-                               action: @escaping () -> Void) -> some View {
-        let hint: String = {
-            switch label {
-            case "Rename": return NSLocalizedString("Change the name of this container", comment: "Rename button accessibility hint")
-            case "Delete": return NSLocalizedString("Remove this container", comment: "Delete button accessibility hint")
-            default: return ""
-            }
-        }()
-        Button(action: action) {
-            Label(label, systemImage: icon)
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(tint.opacity(0.12),
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .foregroundStyle(tint)
         .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityHint(Text(hint))
-    }
-
-    // MARK: - Rename
-
-    private func startRename() {
-        guard let active = selection.active else { return }
-        renameText = name(of: active)
-        isRenaming = true
-    }
-
-    private func saveRename() {
-        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let active = selection.active else { return }
-        switch active {
-        case .list(let l):    l.title = trimmed; l.touch()
-        case .project(let p): p.title = trimmed; p.touch()
-        case .space(let s):   s.name  = trimmed; s.touch()
-        }
-        do {
-            try context.saveOrThrow()
-            selection.clear()
-        } catch let error as DataError {
-            actionError = error
-        } catch {
-            actionError = .saveFailed(error)
-        }
+        .accessibilityLabel("Delete")
+        .accessibilityHint(NSLocalizedString("Remove this container", comment: "Delete button accessibility hint"))
     }
 
     // MARK: - Delete
 
     private func initiateDelete() {
         guard let active = selection.active else { return }
-        hasOpenTasks     = openTaskCount(in: active) > 0
-        showDeleteDialog = true
-    }
-
-    private func performDelete(moveToInbox: Bool) {
-        guard let active = selection.active else { return }
-        switch active {
-        case .list(let l):    deleteList(l,    moveToInbox: moveToInbox)
-        case .project(let p): deleteProject(p, moveToInbox: moveToInbox)
-        case .space(let s):   deleteSpace(s,   moveToInbox: moveToInbox)
-        }
-        selection.clear()
+        hasOpenTasks = openTaskCount(in: active) > 0
+        // Store hasOpenTasks in a shared state for the alert to access
+        DeleteAlertState.shared.hasOpenTasks = hasOpenTasks
+        DeleteAlertState.shared.showAlert = true
     }
 
     // MARK: - Helpers
-
-    private func name(of kind: SwipeableContainerKind) -> String {
-        switch kind {
-        case .list(let l):    return l.title
-        case .project(let p): return p.title
-        case .space(let s):   return s.name
-        }
-    }
-
-    private var deleteTitle: String {
-        guard let a = selection.active else { return "Delete?" }
-        switch a {
-        case .list(let l):    return "Delete \"\(l.title)\"?"
-        case .project(let p): return "Delete \"\(p.title)\"?"
-        case .space(let s):   return "Delete \"\(s.name)\"?"
-        }
-    }
 
     private func openTaskCount(in kind: SwipeableContainerKind) -> Int {
         switch kind {
@@ -220,53 +122,154 @@ struct ContainerActionBar: View {
         return try? context.fetchOrThrow(desc).first
     }
 
-    private func deleteList(_ list: List, moveToInbox: Bool) {
+    func deleteList(_ list: List, moveToInbox: Bool) {
         if moveToInbox, let inbox = fetchInbox() {
             list.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) }
         }
         context.delete(list)
-        do {
-            try context.saveOrThrow()
-            selection.clear()
-        } catch let error as DataError {
-            actionError = error
-        } catch {
-            actionError = .deleteFailed(error)
-        }
+        try? context.saveOrThrow()
     }
 
-    private func deleteProject(_ project: Project, moveToInbox: Bool) {
+    func deleteProject(_ project: Project, moveToInbox: Bool) {
         if moveToInbox, let inbox = fetchInbox() {
             project.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) }
         }
         context.delete(project)
-        do {
-            try context.saveOrThrow()
-            selection.clear()
-        } catch let error as DataError {
-            actionError = error
-        } catch {
-            actionError = .deleteFailed(error)
-        }
+        try? context.saveOrThrow()
     }
 
-    private func deleteSpace(_ space: Space, moveToInbox: Bool) {
+    func deleteSpace(_ space: Space, moveToInbox: Bool) {
         if moveToInbox, let inbox = fetchInbox() {
             space.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) }
-            for list    in space.lists    { list.items.filter    { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) } }
+            for list in space.lists { list.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) } }
             for project in space.projects { project.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) } }
         }
         // Space.lists uses deleteRule .nullify — delete explicitly to avoid orphans.
         for list in space.lists { context.delete(list) }
         context.delete(space)
-        do {
-            try context.saveOrThrow()
-            selection.clear()
-        } catch let error as DataError {
-            actionError = error
-        } catch {
-            actionError = .deleteFailed(error)
+        try? context.saveOrThrow()
+    }
+}
+
+// MARK: - DeleteAlertState
+
+/// Shared state for the delete alert, accessible from both the button and the alert overlay.
+@Observable
+final class DeleteAlertState {
+    static let shared = DeleteAlertState()
+
+    var showAlert = false
+    var hasOpenTasks = false
+
+    private init() {}
+}
+
+// MARK: - DeleteConfirmationAlert
+
+/// Custom-styled delete confirmation alert that displays the container's icon and name.
+struct DeleteConfirmationAlert: View {
+    let containerKind: SwipeableContainerKind?
+    let hasOpenTasks: Bool
+    let onDelete: (Bool) -> Void
+    let onCancel: () -> Void
+
+    @State private var isVisible = false
+
+    private var containerInfo: (icon: String, name: String, color: Color) {
+        guard let kind = containerKind else {
+            return (icon: "questionmark", name: "Unknown", color: .gray)
+        }
+        switch kind {
+        case .list(let l):
+            return (icon: l.kindRaw == "inbox" ? "tray" : "list.bullet", name: l.title, color: List.containerColor)
+        case .project(let p):
+            return (icon: "folder", name: p.title, color: Project.containerColor)
+        case .space(let s):
+            return (icon: s.symbolName, name: s.name, color: Space.containerColor)
         }
     }
 
+    var body: some View {
+        ZStack {
+            // Alert card
+            VStack(spacing: 20) {
+                // Container icon
+                ZStack {
+                    Circle()
+                        .fill(containerInfo.color.opacity(0.15))
+                        .frame(width: 72, height: 72)
+                    Image(systemName: containerInfo.icon)
+                        .font(.system(size: 32))
+                        .foregroundStyle(containerInfo.color)
+                }
+
+                // Title
+                Text("Delete \"\(containerInfo.name)\"?")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+
+                // Message for open tasks
+                if hasOpenTasks {
+                    Text("This container has open tasks. Choose how to handle them.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                // Action buttons
+                VStack(spacing: 12) {
+                    if hasOpenTasks {
+                        Button(action: { onDelete(true) }) {
+                            Text("Move Open Tasks to Inbox")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.accentColor.opacity(0.12))
+                                .foregroundStyle(Color.accentColor)
+                                .cornerRadius(12)
+                        }
+                    }
+
+                    Button(role: .destructive) {
+                        onDelete(false)
+                    } label: {
+                        Text(hasOpenTasks ? "Delete All" : "Delete")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color.red.opacity(0.12))
+                            .foregroundStyle(.red)
+                            .cornerRadius(12)
+                    }
+
+                    Button(action: onCancel) {
+                        Text("Cancel")
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color.gray.opacity(0.12))
+                            .foregroundStyle(.primary)
+                            .cornerRadius(12)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(24)
+            .frame(maxWidth: 320)
+            .background(Color(.systemBackground))
+            .cornerRadius(20)
+            .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
+            .padding(.horizontal, 40)
+            // Animate alert card appearance with scale and opacity
+            .scaleEffect(isVisible ? 1 : 0.9)
+            .opacity(isVisible ? 1 : 0)
+        }
+        .onAppear {
+            // Trigger animation after a tiny delay for smooth entrance
+            withAnimation(.spring(duration: 0.35, bounce: 0.15)) {
+                isVisible = true
+            }
+        }
+    }
 }

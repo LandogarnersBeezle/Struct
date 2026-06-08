@@ -65,37 +65,79 @@ struct ContainersSidebarView: View {
     // MARK: Body
 
     var body: some View {
-        // Inbox row — sits above the drag-enabled scroll area
-        if let inbox {
-            let inboxOpenCount = inbox.items.filter { !$0.isCompleted }.count
-            let inboxAccessibilityLabel = inboxOpenCount > 0
-                ? String(format: NSLocalizedString("Inbox, %d open task%@", comment: "Inbox accessibility label"),
-                         inboxOpenCount, inboxOpenCount == 1 ? "" : "s")
-                : NSLocalizedString("Inbox, no open tasks", comment: "Inbox accessibility label")
-            Button { onSelect(.list(inbox)) } label: {
-                ContainerRowView(symbol: "tray", title: inbox.title,
-                                 openTaskCount: inboxOpenCount,
-                                 color: List.containerColor)
+        ZStack {
+            // Main layout: inbox on top, scroll content below
+            VStack(alignment: .leading, spacing: 0) {
+                // Inbox row — stays at the top, outside the scroll area
+                if let inbox {
+                    let inboxOpenCount = inbox.items.filter { !$0.isCompleted }.count
+                    let inboxAccessibilityLabel = inboxOpenCount > 0
+                        ? String(format: NSLocalizedString("Inbox, %d open task%@", comment: "Inbox accessibility label"),
+                                 inboxOpenCount, inboxOpenCount == 1 ? "" : "s")
+                        : NSLocalizedString("Inbox, no open tasks", comment: "Inbox accessibility label")
+                    Button { onSelect(.list(inbox)) } label: {
+                        ContainerRowView(symbol: "tray", title: inbox.title,
+                                         openTaskCount: inboxOpenCount,
+                                         color: List.containerColor)
+                    }
+                    .buttonStyle(ContainerRowButtonStyle())
+                    .padding(5)
+                    .accessibilityLabel(inboxAccessibilityLabel)
+                    .accessibilityHint(NSLocalizedString("Tap to view inbox items", comment: "Inbox accessibility hint"))
+                }
+                
+                // Scroll content below inbox
+                ZStack(alignment: .top) {
+                    scrollContent
+                    floatingCardOverlay
+                    spaceFloatingCardOverlay
+                }
             }
-            .buttonStyle(ContainerRowButtonStyle())
-            .padding(5)
-            .accessibilityLabel(inboxAccessibilityLabel)
-            .accessibilityHint(NSLocalizedString("Tap to view inbox items", comment: "Inbox accessibility hint"))
-        }
-
-        // ZStack: scroll content behind + floating drag cards on top
-        ZStack(alignment: .top) {
-            scrollContent
-            floatingCardOverlay
-            spaceFloatingCardOverlay
+            // Bottom-right button overlay
+            .overlay(alignment: .bottomTrailing) {
+                ZStack {
+                    // Plus button - shown when no swipe selection
+                    addMenu
+                        .opacity(swipeSelection.active == nil ? 1 : 0)
+                        .scaleEffect(swipeSelection.active == nil ? 1 : 0.85)
+                        .animation(.spring(duration: 0.28, bounce: 0), value: swipeSelection.active == nil)
+                    
+                    // Delete button - shown when a row is swipe-selected
+                    ContainerDeleteButton()
+                        .opacity(swipeSelection.active != nil ? 1 : 0)
+                        .scaleEffect(swipeSelection.active != nil ? 1 : 0.85)
+                        .animation(.spring(duration: 0.28, bounce: 0), value: swipeSelection.active != nil)
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 16)
+            }
+            
+            // Delete confirmation alert - centered on screen
+            if DeleteAlertState.shared.showAlert {
+                DeleteConfirmationAlert(
+                    containerKind: swipeSelection.active,
+                    hasOpenTasks: DeleteAlertState.shared.hasOpenTasks,
+                    onDelete: { moveToInbox in
+                        guard let active = swipeSelection.active else { return }
+                        switch active {
+                        case .list(let l):    deleteList(l, moveToInbox: moveToInbox)
+                        case .project(let p): deleteProject(p, moveToInbox: moveToInbox)
+                        case .space(let s):   deleteSpace(s, moveToInbox: moveToInbox)
+                        }
+                        DeleteAlertState.shared.showAlert = false
+                        swipeSelection.clear()
+                    },
+                    onCancel: {
+                        DeleteAlertState.shared.showAlert = false
+                        swipeSelection.clear()
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(1000)
+            }
         }
         .environment(drag)
         .environment(swipeSelection)
-        .overlay(alignment: .bottomTrailing) {
-            addMenu
-                .padding(.trailing, 20)
-                .padding(.bottom, 16)
-        }
     }
 
     // MARK: - Space slots
@@ -169,12 +211,9 @@ struct ContainersSidebarView: View {
         .onPreferenceChange(SpaceHeaderFrameKey.self) { drag.spaceHeaderFrames   = $0 }
         .onPreferenceChange(SidebarOriginKey.self)    { drag.sidebarOriginInWindow = $0 }
         .safeAreaInset(edge: .bottom) {
-            // Action bar shown during swipe interactions — takes the full inset.
-            // The add button is positioned separately via overlay to sit at bottom‑right.
-            ContainerActionBar()
-                .opacity(swipeSelection.active != nil ? 1 : 0)
-                .scaleEffect(swipeSelection.active != nil ? 1 : 0.85)
-                .animation(.spring(duration: 0.28, bounce: 0), value: swipeSelection.active != nil)
+            // Invisible spacer to maintain layout consistency when delete button is shown
+            Color.clear
+                .frame(height: 0)
         }
         .sheet(item: $pendingCreate) { CreateContainerView(kind: $0) }
         .errorAlert($saveError)
@@ -333,6 +372,7 @@ struct ContainersSidebarView: View {
 
     private func handleSpaceTap(_ space: Space) {
         if !drag.isDraggingSpace, !drag.justEndedDrag, !swipeSelection.justTriggered {
+            swipeSelection.clear()
             onSelect(.space(space))
         }
     }
@@ -397,6 +437,43 @@ struct ContainersSidebarView: View {
         .buttonStyle(.plain)
     }
     
+    // MARK: - Delete Helpers
+
+    private func fetchInbox() -> List? {
+        List.ensureInbox(in: modelContext)
+        let slug = List.inboxSlug
+        let desc = FetchDescriptor<List>(predicate: #Predicate { $0.slug == slug })
+        return try? modelContext.fetchOrThrow(desc).first
+    }
+
+    private func deleteList(_ list: List, moveToInbox: Bool) {
+        if moveToInbox, let inbox = fetchInbox() {
+            list.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) }
+        }
+        modelContext.delete(list)
+        try? modelContext.saveOrThrow()
+    }
+
+    private func deleteProject(_ project: Project, moveToInbox: Bool) {
+        if moveToInbox, let inbox = fetchInbox() {
+            project.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) }
+        }
+        modelContext.delete(project)
+        try? modelContext.saveOrThrow()
+    }
+
+    private func deleteSpace(_ space: Space, moveToInbox: Bool) {
+        if moveToInbox, let inbox = fetchInbox() {
+            space.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) }
+            for list in space.lists { list.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) } }
+            for project in space.projects { project.items.filter { !$0.isCompleted }.forEach { $0.setParent(.list(inbox)) } }
+        }
+        // Space.lists uses deleteRule .nullify — delete explicitly to avoid orphans.
+        for list in space.lists { modelContext.delete(list) }
+        modelContext.delete(space)
+        try? modelContext.saveOrThrow()
+    }
+
     // MARK: - Content Height Estimation
     
     /// Estimates the total height of the scroll view content for auto-scroll
