@@ -97,23 +97,23 @@ struct ContainersSidebarView: View {
                     spaceFloatingCardOverlay
                 }
             }
+            .blur(radius: isAddMenuOpen ? 4 : 0)
+            .animation(.easeInOut(duration: 0.2), value: isAddMenuOpen)
             // Bottom-right button overlay
             .overlay(alignment: .bottomTrailing) {
-                ZStack {
-                    // Plus button - shown when no swipe selection
-                    addMenu
-                        .opacity(swipeSelection.active == nil ? 1 : 0)
-                        .scaleEffect(swipeSelection.active == nil ? 1 : 0.85)
-                        .animation(.spring(duration: 0.28, bounce: 0), value: swipeSelection.active == nil)
-                    
-                    // Delete button - shown when a row is swipe-selected
-                    ContainerDeleteButton()
-                        .opacity(swipeSelection.active != nil ? 1 : 0)
-                        .scaleEffect(swipeSelection.active != nil ? 1 : 0.85)
-                        .animation(.spring(duration: 0.28, bounce: 0), value: swipeSelection.active != nil)
+                Group {
+                    if swipeSelection.active == nil {
+                        addMenu
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 16)
+                    } else {
+                        ContainerDeleteButton()
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 16)
+                    }
                 }
-                .padding(.trailing, 20)
-                .padding(.bottom, 16)
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.2), value: swipeSelection.active == nil)
             }
             
             // Delete confirmation alert - centered on screen
@@ -427,6 +427,68 @@ struct ContainersSidebarView: View {
 
     private var addMenu: some View {
         ZStack(alignment: .bottomTrailing) {
+            // Fixed position for the toggle button
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isAddMenuOpen.toggle()
+                }
+            } label: {
+                Image(systemName: isAddMenuOpen ? "xmark" : "plus")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(isAddMenuOpen ? .gray : .accentColor))
+                    .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+            }
+            .buttonStyle(.plain)
+            
+            // Menu buttons positioned above the toggle button
+            if isAddMenuOpen {
+                VStack(alignment: .trailing, spacing: 8) {
+                    MenuButton(
+                        title: "Add Space",
+                        systemImage: "square.grid.2x2",
+                        color: Space.containerColor,
+                        width: menuButtonWidth
+                    ) {
+                        pendingCreate = .space
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isAddMenuOpen = false
+                        }
+                    }
+                    
+                    if !spaces.isEmpty {
+                        MenuButton(
+                            title: "Add List",
+                            systemImage: "list.bullet",
+                            color: List.containerColor,
+                            width: menuButtonWidth
+                        ) {
+                            pendingCreate = .list
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isAddMenuOpen = false
+                            }
+                        }
+                    }
+                    
+                    if !spaces.isEmpty {
+                        MenuButton(
+                            title: "Add Project",
+                            systemImage: "folder",
+                            color: Project.containerColor,
+                            width: menuButtonWidth
+                        ) {
+                            pendingCreate = .project
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isAddMenuOpen = false
+                            }
+                        }
+                    }
+                }
+                .offset(y: -52)
+                .transition(.opacity)
+            }
+            
             // Overlay to dismiss when tapping outside
             if isAddMenuOpen {
                 Color.clear
@@ -437,78 +499,9 @@ struct ContainersSidebarView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .offset(x: -60, y: -60)
-            }
-            
-            HStack {
-                Spacer(minLength: 0)
-                VStack(alignment: .trailing, spacing: 8) {
-                    // Menu buttons (shown when open)
-                    if isAddMenuOpen {
-                        VStack(alignment: .trailing, spacing: 8) {
-                            // Add Space button (always visible)
-                            MenuButton(
-                                title: "Add Space",
-                                systemImage: "square.grid.2x2",
-                                color: Space.containerColor,
-                                width: menuButtonWidth
-                            ) {
-                                pendingCreate = .space
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    isAddMenuOpen = false
-                                }
-                            }
-                            
-                            // Add List button (only when at least one space exists)
-                            if !spaces.isEmpty {
-                                MenuButton(
-                                    title: "Add List",
-                                    systemImage: "list.bullet",
-                                    color: List.containerColor,
-                                    width: menuButtonWidth
-                                ) {
-                                    pendingCreate = .list
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        isAddMenuOpen = false
-                                    }
-                                }
-                            }
-                            
-                            // Add Project button (only when at least one space exists)
-                            if !spaces.isEmpty {
-                                MenuButton(
-                                    title: "Add Project",
-                                    systemImage: "folder",
-                                    color: Project.containerColor,
-                                    width: menuButtonWidth
-                                ) {
-                                    pendingCreate = .project
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        isAddMenuOpen = false
-                                    }
-                                }
-                            }
-                        }
-                        .transition(.opacity)
-                    }
-                    
-                    // Toggle button (plus when closed, X when open)
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isAddMenuOpen.toggle()
-                        }
-                    } label: {
-                        Image(systemName: isAddMenuOpen ? "xmark" : "plus")
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Circle().fill(Color.accentColor))
-                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: isAddMenuOpen)
     }
     
     /// Fixed width for all menu buttons to ensure uniform sizing.
