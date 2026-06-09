@@ -122,8 +122,6 @@ struct SpaceSectionView: View {
         return result
     }
 
-    // MARK: Body
-
     var body: some View {
         // spacing: 0 so we can suppress the gap around the collapsed ghost row.
         VStack(alignment: .leading, spacing: 0) {
