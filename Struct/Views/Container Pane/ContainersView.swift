@@ -14,8 +14,8 @@ import SwiftData
 ///
 /// Responsibilities:
 ///  - Fetches the inbox list and the ordered space list via `@Query`.
-///  - Owns `navigationPath` and `pendingCreate` — the two pieces of navigation
-///    state shared between the sidebar and the detail pane.
+///  - Owns `navigationPath` — the navigation state shared between the sidebar
+///    and the detail pane.
 ///  - Sets up the `NavigationStack` and wires `ContainersSidebarView` to
 ///    `ContainerFocusView` via `navigationDestination`.
 ///
@@ -31,7 +31,6 @@ struct ContainersView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var navigationPath: [ContainerTarget] = []
-    @State private var pendingCreate: CreateKind?
 
     // MARK: Body
 
@@ -44,8 +43,7 @@ struct ContainersView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         navigationPath = [target]
                     }
-                },
-                pendingCreate: $pendingCreate
+                }
             )
             .padding(.horizontal)
             .navigationDestination(for: ContainerTarget.self) { target in

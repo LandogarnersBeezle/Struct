@@ -29,10 +29,6 @@ struct ContainersSidebarView: View {
     /// Called whenever the user taps a container row or space header.
     let onSelect: (ContainerTarget) -> Void
 
-    /// Drives the "create container" sheet; owned by the parent so the sheet
-    /// survives sidebar hide/show transitions.
-    @Binding var pendingCreate: CreateKind?
-
     @Environment(\.modelContext) private var modelContext
 
     // MARK: Error state
@@ -43,6 +39,11 @@ struct ContainersSidebarView: View {
 
     @State private var drag = SidebarDragState()
     @State private var swipeSelection = SidebarSwipeSelection()
+
+    // MARK: Creation card state
+
+    @State private var showCreationCard = false
+    @State private var hidePlusButton = false
 
     // MARK: Services
 
@@ -75,11 +76,11 @@ struct ContainersSidebarView: View {
             // Bottom-right button overlay
             .overlay(alignment: .bottomTrailing) {
                 Group {
-                    if swipeSelection.active == nil {
+                    if swipeSelection.active == nil && !showCreationCard && !hidePlusButton {
                         SidebarAddButton {
-                            // TODO: Implement container creation action
+                            showCreationCardAnimated()
                         }
-                    } else {
+                    } else if swipeSelection.active != nil {
                         ContainerDeleteButton(
                             onDelete: handleDelete
                         )
@@ -106,6 +107,32 @@ struct ContainersSidebarView: View {
                 )
                 .transition(.opacity)
                 .zIndex(1000)
+            }
+
+            // Creation card overlay
+            if showCreationCard {
+                ZStack {
+                    // Invisible hit-testing layer for dismissing on background tap
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            dismissCreationCard()
+                        }
+
+                    // Creation card
+                    ContainerCreationCardView(
+                        onCancel: {
+                            dismissCreationCard()
+                        },
+                        onSave: {
+                            dismissCreationCard()
+                        }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(1001)
+                }
+                .transition(.opacity)
+                .zIndex(999)
             }
         }
         .environment(drag)
@@ -169,7 +196,6 @@ struct ContainersSidebarView: View {
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: 0)
         }
-        .sheet(item: $pendingCreate) { CreateContainerView(kind: $0) }
         .errorAlert($saveError)
         .onChange(of: drag.isDragging)      { _, on in if on { swipeSelection.clear() } }
         .onChange(of: drag.isDraggingSpace) { _, on in if on { swipeSelection.clear() } }
@@ -355,6 +381,35 @@ struct ContainersSidebarView: View {
         }
         DeleteAlertState.shared.showAlert = false
         swipeSelection.clear()
+    }
+
+    // MARK: - Show/Dismiss Creation Card
+
+    private func showCreationCardAnimated() {
+        // Hide the plus button immediately before showing the card
+        hidePlusButton = true
+        
+        // Show the card after a brief delay to ensure button is hidden
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showCreationCard = true
+            }
+        }
+    }
+
+    private func dismissCreationCard() {
+        // Hide the card first
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showCreationCard = false
+        }
+        
+        // Keep button hidden during keyboard dismissal, then show it after
+        // Keyboard dismissal typically takes about 0.25-0.3 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                hidePlusButton = false
+            }
+        }
     }
 
     // MARK: - Content Height Estimation
