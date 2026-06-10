@@ -43,11 +43,12 @@ struct ContainersView: View {
             if horizontalSizeClass == .regular {
                 // iPad layout: NavigationSplitView with sidebar always visible
                 NavigationSplitView(columnVisibility: .constant(.all)) {
-                    // Sidebar column
+                    // Sidebar column (iPad: hide action button since "+ Container" is in detail view)
                     ContainersSidebarView(
                         inbox: inboxLists.first,
                         spaces: spaces,
                         selectedTarget: selectedTarget,
+                        showActionButton: false,
                         onSelect: { target in
                             selectedTarget = target
                         }

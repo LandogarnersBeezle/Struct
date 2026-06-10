@@ -27,6 +27,9 @@ struct ContainersSidebarView: View {
     let spaces: [Space]
     /// The currently selected container target (used for highlighting on iPad)
     var selectedTarget: ContainerTarget? = nil
+    /// Whether to show the bottom-right action button (plus/delete).
+    /// On iPad, this is hidden because the "+ Container" button is in the detail view.
+    var showActionButton: Bool = true
 
     /// Called whenever the user selects a container row or space header.
     let onSelect: (ContainerTarget) -> Void
@@ -75,23 +78,26 @@ struct ContainersSidebarView: View {
                     spaceFloatingCardOverlay
                 }
             }
-            // Bottom-right button overlay
+            // Bottom-right button overlay (controlled by showActionButton parameter)
+            // On iPad, showActionButton is false because the "+ Container" button is in the detail view
             .overlay(alignment: .bottomTrailing) {
-                Group {
-                    if swipeSelection.active == nil && !showCreationCard && !hidePlusButton {
-                        SidebarAddButton {
-                            showCreationCardAnimated()
+                if showActionButton {
+                    Group {
+                        if swipeSelection.active == nil && !showCreationCard && !hidePlusButton {
+                            SidebarAddButton {
+                                showCreationCardAnimated()
+                            }
+                        } else if swipeSelection.active != nil {
+                            ContainerDeleteButton(
+                                onDelete: handleDelete
+                            )
                         }
-                    } else if swipeSelection.active != nil {
-                        ContainerDeleteButton(
-                            onDelete: handleDelete
-                        )
                     }
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 16)
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.2), value: swipeSelection.active == nil)
                 }
-                .padding(.trailing, 20)
-                .padding(.bottom, 16)
-                .transition(.opacity)
-                .animation(.easeInOut(duration: 0.2), value: swipeSelection.active == nil)
             }
 
             // Delete confirmation alert - centered on screen

@@ -23,6 +23,7 @@ struct ContainerFocusView: View {
     @StateObject private var viewModel: ContainerFocusViewModel
     @State private var showTaskCreationCard: Bool = false
     @State private var showSectionCreationCard: Bool = false
+    @State private var showContainerCreationCard: Bool = false
     @State private var isDatePickerShown: Bool = false
     @State private var isPlusButtonVisible: Bool = true
     @State private var selectedTaskContainer: ContainerTarget? = nil
@@ -248,6 +249,35 @@ struct ContainerFocusView: View {
             .overlay(alignment: .bottomTrailing) {
                 if isPlusButtonVisible {
                     HStack(spacing: 12) {
+                        // Container button (iPad only)
+                        if horizontalSizeClass == .regular {
+                            Button {
+                                // Hide the plus button before the keyboard appears
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    isPlusButtonVisible = false
+                                }
+                                // Small delay to ensure button animates out before card appears
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                        showContainerCreationCard.toggle()
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "plus")
+                                        .font(.caption.weight(.semibold))
+                                    Text("Container")
+                                        .font(.caption.weight(.semibold))
+                                }
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Capsule().fill(Color.blue))
+                                .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
                         // Section button
                         Button {
                             // Hide the plus button before the keyboard appears
@@ -436,6 +466,55 @@ struct ContainerFocusView: View {
                         }
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            // Container creation card overlay (iPad only)
+            .overlay(alignment: .top) {
+                if showContainerCreationCard {
+                    ZStack {
+                        // Invisible hit-testing layer for dismissing on background tap
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    showContainerCreationCard = false
+                                }
+                                // Restore the plus button after the keyboard has collapsed
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                        isPlusButtonVisible = true
+                                    }
+                                }
+                            }
+
+                        // Container creation card centered in detail view
+                        ContainerCreationCardView(
+                            onCancel: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    showContainerCreationCard = false
+                                }
+                                // Restore the plus button after the keyboard has collapsed
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                        isPlusButtonVisible = true
+                                    }
+                                }
+                            },
+                            onSave: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    showContainerCreationCard = false
+                                }
+                                // Restore the plus button after the keyboard has collapsed
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                        isPlusButtonVisible = true
+                                    }
+                                }
+                            }
+                        )
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                    .transition(.opacity)
                 }
             }
             // Container selector overlay (for breadcrumb in task creation card)
