@@ -188,7 +188,13 @@ struct DraggableGestureOverlay: UIViewRepresentable {
 
         func gestureRecognizer(_ g: UIGestureRecognizer,
                                shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-            true
+            // When long press has begun, prevent scroll view pan from recognizing simultaneously
+            if g is UILongPressGestureRecognizer && (g.state == .began || g.state == .changed) {
+                if other is UIPanGestureRecognizer {
+                    return false
+                }
+            }
+            return true
         }
 
         @objc func handleTap(_ g: UITapGestureRecognizer) {

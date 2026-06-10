@@ -272,7 +272,7 @@ struct ContainerFocusView: View {
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
-                                .background(Capsule().fill(Color.blue))
+                                .background(Capsule().fill(Color.gray))
                                 .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
                             }
                             .buttonStyle(.plain)
