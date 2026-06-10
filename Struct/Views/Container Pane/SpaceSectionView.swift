@@ -62,6 +62,8 @@ struct SpaceSectionView: View {
     let space:     Space
     /// All spaces — needed so any section can commit a cross-space drop.
     let allSpaces: [Space]
+    /// The currently selected container target (used for highlighting on iPad)
+    var selectedTarget: ContainerTarget? = nil
     let onSelect:  (ContainerTarget) -> Void
 
     @Environment(SidebarDragState.self)      private var drag
@@ -79,9 +81,10 @@ struct SpaceSectionView: View {
     @Query private var lists:    [List]
     @Query private var projects: [Project]
 
-    init(space: Space, allSpaces: [Space], onSelect: @escaping (ContainerTarget) -> Void) {
+    init(space: Space, allSpaces: [Space], selectedTarget: ContainerTarget? = nil, onSelect: @escaping (ContainerTarget) -> Void) {
         self.space     = space
         self.allSpaces = allSpaces
+        self.selectedTarget = selectedTarget
         self.onSelect  = onSelect
         let id = space.persistentModelID
         _lists = Query(
@@ -193,6 +196,9 @@ struct SpaceSectionView: View {
             openTaskCount: child.openTaskCount,
             color:         child.containerColor
         )
+        // Background highlight for selected state (no layout shift)
+        .background(selectedTarget == child.target ? Color.accentColor.opacity(0.12) : Color.clear)
+        .cornerRadius(8)
         // Single UIKit-backed gesture pipeline handles tap, swipe-left, and
         // long-press-drag without competing with the ScrollView's pan.
         .draggableRowInteraction(
@@ -204,9 +210,6 @@ struct SpaceSectionView: View {
             onDragChanged:    { handleDragChanged(at: $0) },
             onDragEnded:      { handleDragEnded() }
         )
-        // Ghost-collapse: keep the view (and its gesture host) alive but at
-        // zero height so the active recogniser is not torn down mid-drag.
-        .opacity(isGhosted ? 0 : 1)
         .frame(height: isGhosted ? 0 : nil)
         .clipped()
         .allowsHitTesting(!isGhosted)

@@ -14,10 +14,9 @@ import SwiftData
 ///
 /// Responsibilities:
 ///  - Fetches the inbox list and the ordered space list via `@Query`.
-///  - Owns `navigationPath` — the navigation state shared between the sidebar
-///    and the detail pane.
-///  - Sets up the `NavigationStack` and wires `ContainersSidebarView` to
-///    `ContainerFocusView` via `navigationDestination`.
+///  - On iPad: Uses `NavigationSplitView` with sidebar always visible
+///  - On iPhone: Uses `NavigationStack` with push navigation
+///  - Sets default selection to Inbox on launch
 ///
 /// Layout and per-space data are delegated to `ContainersSidebarView` and
 /// `SpaceSectionView` respectively.
@@ -29,26 +28,68 @@ struct ContainersView: View {
     @Query(sort: \Space.sortIndex) private var spaces: [Space]
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    // iPad: selected container for the detail view
+    @State private var selectedTarget: ContainerTarget? = nil
+    
+    // iPhone: navigation path for push-based navigation
     @State private var navigationPath: [ContainerTarget] = []
 
     // MARK: Body
 
     var body: some View {
-        NavigationStack(path: $navigationPath) {
-            ContainersSidebarView(
-                inbox: inboxLists.first,
-                spaces: spaces,
-                onSelect: { target in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        navigationPath = [target]
+        Group {
+            if horizontalSizeClass == .regular {
+                // iPad layout: NavigationSplitView with sidebar always visible
+                NavigationSplitView(columnVisibility: .constant(.all)) {
+                    // Sidebar column
+                    ContainersSidebarView(
+                        inbox: inboxLists.first,
+                        spaces: spaces,
+                        selectedTarget: selectedTarget,
+                        onSelect: { target in
+                            selectedTarget = target
+                        }
+                    )
+                    .padding(.horizontal)
+                    .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
+                    .toolbar(.hidden, for: .navigationBar)
+                } detail: {
+                    // Detail column - shows selected container or placeholder
+                    if let target = selectedTarget {
+                        ContainerFocusView(target: target, showBackButton: false)
+                            .toolbar(.hidden, for: .navigationBar)
+                    } else {
+                        // Placeholder when nothing is selected
+                        ContentUnavailableView(
+                            "Select a Container",
+                            systemImage: "list.bullet.rectangle",
+                            description: Text("Choose a container from the sidebar to view its items.")
+                        )
+                        .toolbar(.hidden, for: .navigationBar)
                     }
                 }
-            )
-            .padding(.horizontal)
-            .navigationDestination(for: ContainerTarget.self) { target in
-                ContainerFocusView(target: target) { newTarget in
-                    navigationPath = [newTarget]
+                .navigationSplitViewStyle(.automatic)
+                .toolbar(.hidden, for: .navigationBar)
+            } else {
+                // iPhone layout: NavigationStack with push navigation
+                NavigationStack(path: $navigationPath) {
+                    ContainersSidebarView(
+                        inbox: inboxLists.first,
+                        spaces: spaces,
+                        onSelect: { target in
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                navigationPath = [target]
+                            }
+                        }
+                    )
+                    .padding(.horizontal)
+                    .navigationDestination(for: ContainerTarget.self) { target in
+                        ContainerFocusView(target: target) { newTarget in
+                            navigationPath = [newTarget]
+                        }
+                    }
                 }
             }
         }
@@ -60,9 +101,13 @@ struct ContainersView: View {
                 Containers.ensureUnifiedSortOrder(for: space)
             }
             try? modelContext.save()
+            
+            // Always select Inbox by default on launch
+            if let inbox = inboxLists.first {
+                selectedTarget = .list(inbox)
+            }
         }
     }
-
 }
 
 #Preview {

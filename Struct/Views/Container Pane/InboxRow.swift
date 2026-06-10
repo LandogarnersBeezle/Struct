@@ -16,6 +16,8 @@ import SwiftUI
 /// accessibility labels to communicate the state to VoiceOver users.
 struct InboxRow: View {
     let inbox: List
+    /// Whether this row is currently selected (used for highlighting on iPad)
+    var isSelected: Bool = false
     let onSelect: (ContainerTarget) -> Void
 
     private var openTaskCount: Int {
@@ -48,6 +50,8 @@ struct InboxRow: View {
         }
         .buttonStyle(ContainerRowButtonStyle())
         .padding(5)
+        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .cornerRadius(8)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint)
     }

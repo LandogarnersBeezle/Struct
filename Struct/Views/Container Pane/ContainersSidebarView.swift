@@ -25,8 +25,10 @@ struct ContainersSidebarView: View {
 
     let inbox: List?
     let spaces: [Space]
+    /// The currently selected container target (used for highlighting on iPad)
+    var selectedTarget: ContainerTarget? = nil
 
-    /// Called whenever the user taps a container row or space header.
+    /// Called whenever the user selects a container row or space header.
     let onSelect: (ContainerTarget) -> Void
 
     @Environment(\.modelContext) private var modelContext
@@ -63,7 +65,7 @@ struct ContainersSidebarView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Inbox row — stays at the top, outside the scroll area
                 if let inbox {
-                    InboxRow(inbox: inbox, onSelect: onSelect)
+                    InboxRow(inbox: inbox, isSelected: selectedTarget == .list(inbox), onSelect: onSelect)
                 }
 
                 // Scroll content below inbox
@@ -162,7 +164,7 @@ struct ContainersSidebarView: View {
                     case .space(let space):
                         let isGhost = drag.draggingSpace?.persistentModelID == space.persistentModelID
                         Section {
-                            SpaceSectionView(space: space, allSpaces: spaces, onSelect: onSelect)
+                            SpaceSectionView(space: space, allSpaces: spaces, selectedTarget: selectedTarget, onSelect: onSelect)
                                 .padding(.horizontal, 5)
                                 .padding(.bottom, isGhost ? 0 : 8)
                         } header: {
@@ -236,6 +238,7 @@ struct ContainersSidebarView: View {
     @ViewBuilder
     private func spaceHeader(for space: Space) -> some View {
         let isGhost = drag.draggingSpace?.persistentModelID == space.persistentModelID
+        let isSelected = selectedTarget == .space(space)
         let spaceOpenCount = space.items.filter { !$0.isCompleted }.count
         let spaceAccessibilityLabel = spaceOpenCount > 0
             ? String(format: NSLocalizedString("%@, Space, %d open task%@", comment: "Space accessibility label format"),
@@ -263,7 +266,8 @@ struct ContainersSidebarView: View {
                                        value: [space.persistentModelID: geo.frame(in: .named("sidebar"))])
             }
         }
-        .background(.background)
+        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .cornerRadius(8)
         .opacity(isGhost ? 0 : 1)
         .frame(height: isGhost ? 0 : nil)
         .clipped()

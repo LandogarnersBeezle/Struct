@@ -14,6 +14,9 @@ struct ContainerFocusView: View {
     /// The owner should replace the navigation path with the new target so
     /// the back button returns to the root rather than the previous detail view.
     var onNavigate: (ContainerTarget) -> Void = { _ in }
+    /// Whether to show the back button. On iPad with split view, the back button
+    /// is hidden since the sidebar is always visible.
+    var showBackButton: Bool = true
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -37,9 +40,10 @@ struct ContainerFocusView: View {
     @Query(sort: \Space.sortIndex)
     private var spaces: [Space]
     
-    init(target: ContainerTarget, onNavigate: @escaping (ContainerTarget) -> Void = { _ in }) {
+    init(target: ContainerTarget, onNavigate: @escaping (ContainerTarget) -> Void = { _ in }, showBackButton: Bool = true) {
         self.target = target
         self.onNavigate = onNavigate
+        self.showBackButton = showBackButton
         _viewModel = StateObject(wrappedValue: ContainerFocusViewModel())
     }
 
@@ -98,9 +102,15 @@ struct ContainerFocusView: View {
 
     // MARK: - Back Button
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     private var backButton: some View {
-        Button { dismiss() } label: {
-            Image(systemName: "chevron.left")
+        Group {
+            if showBackButton {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                }
+            }
         }
     }
 
