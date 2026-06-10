@@ -60,10 +60,11 @@ class AutoScrollUIView: UIView {
     private var displayLink: CADisplayLink?
     
     // Scroll threshold: begin scrolling when drag is within this distance from edge
-    private let threshold: CGFloat = 60
+    // Uses LayoutMetrics.sidebar for consistency
+    private var threshold: CGFloat { LayoutMetrics.sidebar.autoScrollThreshold }
     
     // Maximum scroll speed in points per second (at the very edge)
-    private let maxScrollSpeed: CGFloat = 300
+    private var maxScrollSpeed: CGFloat { LayoutMetrics.sidebar.autoScrollMaxSpeed }
     
     // Current scroll direction: -1 for up, 1 for down, 0 for stopped
     private var scrollDirection: Int = 0

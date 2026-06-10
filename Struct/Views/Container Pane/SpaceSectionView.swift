@@ -24,21 +24,25 @@ private enum SlotItem: Identifiable {
     }
 }
 
-extension SlotItem: Equatable {
+extension SlotItem: Hashable {
     static func == (lhs: SlotItem, rhs: SlotItem) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
-// MARK: - DropGapView
+// MARK: - Drop Gap View
 
 /// Dashed-outline placeholder that shows where the dragged card will land.
 private struct DropGapView: View {
     let height: CGFloat
+    let layoutMetrics: LayoutMetrics
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
+        RoundedRectangle(cornerRadius: layoutMetrics.dropGapCornerRadius, style: .continuous)
             .strokeBorder(
                 Color.accentColor.opacity(0.55),
-                style: StrokeStyle(lineWidth: 1.5, dash: [6, 3])
+                style: StrokeStyle(lineWidth: layoutMetrics.dropGapLineWidth, dash: layoutMetrics.dropGapDashPattern)
             )
             .frame(height: height)
             .padding(.horizontal, 4)
@@ -63,6 +67,10 @@ struct SpaceSectionView: View {
     @Environment(SidebarDragState.self)      private var drag
     @Environment(SidebarSwipeSelection.self) private var swipeSelection
     @Environment(\.modelContext)             private var context
+
+    // MARK: Layout metrics
+
+    private let layoutMetrics = LayoutMetrics.sidebar
 
     // MARK: Error state
 
@@ -140,23 +148,23 @@ struct SpaceSectionView: View {
                         // Collapsed ghost takes no space; normal rows keep 8 pt below.
                         .padding(.bottom, isGhosted ? 0 : 8)
                 case .gap:
-                    DropGapView(height: drag.cardHeight)
+                    DropGapView(height: drag.cardHeight, layoutMetrics: layoutMetrics)
                         .padding(.bottom, 8)
                         .transition(.asymmetric(
                             insertion: .scale(scale: 0.85).combined(with: .opacity),
-                            removal:   .opacity.animation(.easeOut(duration: 0.1))
+                            removal:   .opacity.animation(.easeOut(duration: layoutMetrics.cardFadeOutDuration))
                         ))
                 }
             }
         }
-        .animation(.spring(duration: 0.22, bounce: 0), value: slots)
+        .animation(.spring(duration: layoutMetrics.dragSpringDuration, bounce: layoutMetrics.dragSpringBounce), value: slots.map(\.id))
         .padding(.leading, 8)
         // When this space is being dragged as a whole, collapse all its children
         // so only the (ghost) space header remains visible in the layout.
         .opacity(drag.draggingSpace?.persistentModelID == space.persistentModelID ? 0 : 1)
         .frame(height: drag.draggingSpace?.persistentModelID == space.persistentModelID ? 0 : nil)
         .clipped()
-        .animation(.spring(duration: 0.22, bounce: 0),
+        .animation(.spring(duration: layoutMetrics.dragSpringDuration, bounce: layoutMetrics.dragSpringBounce),
                    value: drag.draggingSpace?.persistentModelID)
         .errorAlert($saveError)
     }
@@ -187,7 +195,7 @@ struct SpaceSectionView: View {
         )
         // Single UIKit-backed gesture pipeline handles tap, swipe-left, and
         // long-press-drag without competing with the ScrollView's pan.
-        .sidebarRowInteraction(
+        .draggableRowInteraction(
             isHighlighted: swipeSelection.matches(child.swipeKind),
             accessibilityLabel: accessibilityLabelText,
             onTap:            { handleTap(child) },
@@ -222,7 +230,7 @@ struct SpaceSectionView: View {
             drag.targetSpaceID = space.persistentModelID
             drag.targetIndex   = idx
         }
-        drag.begin(child: child, at: loc, height: drag.cardHeight)
+        drag.begin(child: child, at: loc, height: layoutMetrics.rowHeight)
     }
 
     private func handleDragChanged(at windowLoc: CGPoint) {

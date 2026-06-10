@@ -118,7 +118,7 @@ extension ContainerTarget {
 // Type-erased child of a Space. After the unified-sortIndex migration both
 // Lists and Projects share a single ordering namespace per Space; the UI
 // sorts them together by `sortIndex` and may freely interleave them.
-enum ContainerChild: Identifiable {
+enum ContainerChild: Identifiable, Hashable {
     case list(List)
     case project(Project)
 
@@ -139,6 +139,14 @@ enum ContainerChild: Identifiable {
         case .list(let l):    return l.sortIndex
         case .project(let p): return p.sortIndex
         }
+    }
+
+    static func == (lhs: ContainerChild, rhs: ContainerChild) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }
 
