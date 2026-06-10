@@ -19,7 +19,9 @@ struct ContainerFocusView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var viewModel: ContainerFocusViewModel
     @State private var showTaskCreationCard: Bool = false
+    @State private var showSectionCreationCard: Bool = false
     @State private var isDatePickerShown: Bool = false
+    @State private var isPlusButtonVisible: Bool = true
     @State private var selectedTaskContainer: ContainerTarget? = nil
     @State private var showContainerSelector: Bool = false
     @State private var containerSelectorSearchText: String = ""
@@ -234,21 +236,127 @@ struct ContainerFocusView: View {
                 swipeBackOverlay
             }
             .overlay(alignment: .bottomTrailing) {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        showTaskCreationCard.toggle()
+                if isPlusButtonVisible {
+                    HStack(spacing: 12) {
+                        // Section button
+                        Button {
+                            // Hide the plus button before the keyboard appears
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                isPlusButtonVisible = false
+                            }
+                            // Small delay to ensure button animates out before card appears
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    showSectionCreationCard.toggle()
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                    .font(.caption.weight(.semibold))
+                                Text("Section")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.gray))
+                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                        }
+                        .buttonStyle(.plain)
+
+                        // Task button
+                        Button {
+                            // Hide the plus button before the keyboard appears
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                isPlusButtonVisible = false
+                            }
+                            // Small delay to ensure button animates out before card appears
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    showTaskCreationCard.toggle()
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                    .font(.caption.weight(.semibold))
+                                Text("Task")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.accentColor))
+                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                        }
+                        .buttonStyle(.plain)
                     }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(Color.accentColor))
-                        .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 16)
+                    .transition(.scale.combined(with: .opacity))
                 }
-                .padding(.trailing, 20)
-                .padding(.bottom, 16)
-                .buttonStyle(.plain)
+            }
+            // Section creation card overlay
+            .overlay(alignment: .top) {
+                if showSectionCreationCard {
+                    SectionCreationCardView(
+                        targetContainer: target,
+                        onCancel: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                showSectionCreationCard = false
+                            }
+                            // Restore the plus button after the keyboard has collapsed
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    isPlusButtonVisible = true
+                                }
+                            }
+                        },
+                        onSave: { title in
+                            // Animate the card out first
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                showSectionCreationCard = false
+                            }
+                            // After the card finishes dismissing, create the section and restore the plus button
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                // Determine the parent for the new section
+                                let parent: TaskSectionParent
+                                switch target {
+                                case .space(let s): parent = .space(s)
+                                case .project(let p): parent = .project(p)
+                                case .list(let l): parent = .list(l)
+                                }
+
+                                // Get existing sections for this container to shift their sort indices
+                                let existingSections: [TaskSection]
+                                switch target {
+                                case .space(let s):
+                                    existingSections = s.taskSections
+                                case .project(let p):
+                                    existingSections = p.taskSections
+                                case .list(let l):
+                                    existingSections = l.taskSections
+                                }
+
+                                // Shift all existing sections' sort indices by +1
+                                for section in existingSections {
+                                    section.sortIndex += 1
+                                }
+
+                                // Create the new section at sort index 0
+                                let newSection = TaskSection(title: title, sortIndex: 0, parent: parent)
+                                modelContext.insert(newSection)
+
+                                // Restore the plus button after the keyboard has collapsed
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    isPlusButtonVisible = true
+                                }
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
             // Task creation card overlay - shown regardless of container content
             .overlay(alignment: .top) {
@@ -264,6 +372,12 @@ struct ContainerFocusView: View {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                                 showTaskCreationCard = false
                                 selectedTaskContainer = nil
+                            }
+                            // Restore the plus button after the keyboard has collapsed
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    isPlusButtonVisible = true
+                                }
                             }
                         },
                         onDatePickerVisibilityChanged: { isShown in
@@ -286,7 +400,7 @@ struct ContainerFocusView: View {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                                 showTaskCreationCard = false
                             }
-                            // After the card finishes dismissing, insert the item
+                            // After the card finishes dismissing, insert the item and restore the plus button
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                                 // Use the selected container if one was chosen, otherwise use the current target
                                 let saveTarget = selectedTaskContainer ?? target
@@ -304,6 +418,10 @@ struct ContainerFocusView: View {
                                                        sortIndex: itemSortIndex,
                                                        parent: parent)
                                 selectedTaskContainer = nil
+                                // Restore the plus button after the keyboard has collapsed
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    isPlusButtonVisible = true
+                                }
                             }
                         }
                     )
