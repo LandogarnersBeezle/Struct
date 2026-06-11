@@ -213,8 +213,7 @@ struct ContainersSidebarView: View {
 
     private var spaceDropGap: some View {
         RoundedRectangle(cornerRadius: layoutMetrics.dropGapCornerRadius, style: .continuous)
-            .strokeBorder(Color.accentColor.opacity(0.55),
-                          style: StrokeStyle(lineWidth: layoutMetrics.dropGapLineWidth, dash: layoutMetrics.dropGapDashPattern))
+            .fill(Color.green.opacity(0.15))
             .frame(height: drag.spaceCardHeight)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)

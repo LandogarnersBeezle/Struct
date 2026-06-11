@@ -83,7 +83,7 @@ struct ItemRowView: View {
             
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(.vertical, 2)
     }
 }
 

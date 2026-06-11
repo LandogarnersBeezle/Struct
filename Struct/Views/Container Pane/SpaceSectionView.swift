@@ -33,17 +33,14 @@ extension SlotItem: Hashable {
 
 // MARK: - Drop Gap View
 
-/// Dashed-outline placeholder that shows where the dragged card will land.
+/// Subtle green placeholder that shows where the dragged card will land.
 private struct DropGapView: View {
     let height: CGFloat
     let layoutMetrics: LayoutMetrics
 
     var body: some View {
         RoundedRectangle(cornerRadius: layoutMetrics.dropGapCornerRadius, style: .continuous)
-            .strokeBorder(
-                Color.accentColor.opacity(0.55),
-                style: StrokeStyle(lineWidth: layoutMetrics.dropGapLineWidth, dash: layoutMetrics.dropGapDashPattern)
-            )
+            .fill(Color.green.opacity(0.15))
             .frame(height: height)
             .padding(.horizontal, 4)
     }
