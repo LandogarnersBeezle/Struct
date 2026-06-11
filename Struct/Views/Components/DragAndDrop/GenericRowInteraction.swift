@@ -13,18 +13,21 @@ import UIKit
 extension View {
     /// Generic gesture pipeline for draggable, swipeable rows.
     ///
-    /// Installs a UIKit recogniser triplet (tap, horizontal-only pan, long
-    /// press) wired through a shared `UIGestureRecognizerDelegate` so the
-    /// enclosing `UIScrollView`'s pan is never blocked.  Vertical or
-    /// rightward motion fails the horizontal pan immediately; the long press
-    /// auto-fails on >10 pt movement before its 0.4 s threshold; tap requires
-    /// the other two to fail so it never fires on a swipe or a drag-release.
+    /// Installs UIKit recognisers (tap, optional horizontal pan, long press)
+    /// wired through a shared `UIGestureRecognizerDelegate` so the enclosing
+    /// `UIScrollView`'s pan is never blocked.
+    ///
+    /// - Parameter supportsSwipe: When `true` (sidebar rows), a horizontal pan
+    ///   recogniser is installed for swipe-to-reveal actions. When `false`
+    ///   (task rows), only tap and long-press-for-drag are installed,
+    ///   eliminating gesture competition during drag initiation.
     ///
     /// Drag locations are reported in **window** coordinates; convert with
     /// the drag state's `toViewport` method to match the viewport coordinate space.
     ///
     /// This modifier is reusable across different views (sidebar, focus view, etc.)
     func draggableRowInteraction(
+        supportsSwipe: Bool = true,
         isHighlighted: Bool = false,
         accessibilityLabel: String? = nil,
         accessibilityHint: String? = nil,
@@ -35,6 +38,7 @@ extension View {
         onDragEnded: @escaping () -> Void = {}
     ) -> some View {
         modifier(DraggableRowInteractionModifier(
+            supportsSwipe:       supportsSwipe,
             isHighlighted:       isHighlighted,
             accessibilityLabel:  accessibilityLabel,
             accessibilityHint:   accessibilityHint,
@@ -77,6 +81,7 @@ extension View {
 /// selection background) and forwards UIKit gesture callbacks to the caller.
 struct DraggableRowInteractionModifier: ViewModifier {
 
+    let supportsSwipe:       Bool
     let isHighlighted:       Bool
     let accessibilityLabel:  String?
     let accessibilityHint:   String?
@@ -104,13 +109,14 @@ struct DraggableRowInteractionModifier: ViewModifier {
             .offset(x: offset)
             .overlay {
                 DraggableGestureOverlay(
-                    isPressed:       $isPressed,
-                    onTap:           onTap,
-                    onSwipeChanged:  handleSwipeChanged,
-                    onSwipeEnded:    { _ in handleSwipeEnded() },
-                    onDragBegan:     onDragBegan,
-                    onDragChanged:   onDragChanged,
-                    onDragEnded:     onDragEnded,
+                    supportsSwipe:    supportsSwipe,
+                    isPressed:        $isPressed,
+                    onTap:            onTap,
+                    onSwipeChanged:   handleSwipeChanged,
+                    onSwipeEnded:     { _ in handleSwipeEnded() },
+                    onDragBegan:      onDragBegan,
+                    onDragChanged:    onDragChanged,
+                    onDragEnded:      onDragEnded,
                     accessibilityLabel: accessibilityLabel,
                     accessibilityHint:  accessibilityHint
                 )
@@ -150,14 +156,14 @@ struct DraggableRowInteractionModifier: ViewModifier {
 /// row so it captures touches on the row's full bounds.
 struct DraggableGestureOverlay: UIViewRepresentable {
 
+    var supportsSwipe:     Bool = true
     @Binding var isPressed: Bool
-
-    var onTap:           () -> Void
-    var onSwipeChanged:  (CGFloat, CGFloat) -> Void
-    var onSwipeEnded:    (CGFloat) -> Void
-    var onDragBegan:     (CGPoint) -> Void
-    var onDragChanged:   (CGPoint) -> Void
-    var onDragEnded:     () -> Void
+    var onTap:             () -> Void
+    var onSwipeChanged:    (CGFloat, CGFloat) -> Void
+    var onSwipeEnded:      (CGFloat) -> Void
+    var onDragBegan:       (CGPoint) -> Void
+    var onDragChanged:     (CGPoint) -> Void
+    var onDragEnded:       () -> Void
 
     /// Accessibility label for the row
     var accessibilityLabel: String?
@@ -170,6 +176,7 @@ struct DraggableGestureOverlay: UIViewRepresentable {
     func makeUIView(context: Context) -> DraggableGestureHostView {
         let v = DraggableGestureHostView()
         v.coordinator = context.coordinator
+        v.supportsSwipe = supportsSwipe
         v.install()
         return v
     }
@@ -188,11 +195,12 @@ struct DraggableGestureOverlay: UIViewRepresentable {
 
         func gestureRecognizer(_ g: UIGestureRecognizer,
                                shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-            // When long press has begun, prevent scroll view pan from recognizing simultaneously
-            if g is UILongPressGestureRecognizer && (g.state == .began || g.state == .changed) {
-                if other is UIPanGestureRecognizer {
-                    return false
-                }
+            // The long press can coexist with the scroll view's pan gesture
+            // during its .possible phase (before firing), so the scroll view
+            // isn't frozen. Once the long press fires, .scrollDisabled on
+            // the ScrollView prevents unwanted scrolling during drag.
+            if g is UILongPressGestureRecognizer, other is UIPanGestureRecognizer {
+                return true
             }
             return true
         }
@@ -228,6 +236,7 @@ struct DraggableGestureOverlay: UIViewRepresentable {
 final class DraggableGestureHostView: UIView {
 
     weak var coordinator: DraggableGestureOverlay.Coordinator?
+    var supportsSwipe: Bool = true
 
     var rowAccessibilityLabel: String? {
         didSet { accessibilityLabel = rowAccessibilityLabel }
@@ -289,21 +298,23 @@ final class DraggableGestureHostView: UIView {
 
         let lp = UILongPressGestureRecognizer(
             target: c, action: #selector(DraggableGestureOverlay.Coordinator.handleLongPress(_:)))
-        lp.minimumPressDuration = 0.4
-        lp.allowableMovement = 10
+        lp.minimumPressDuration = 0.3
+        lp.allowableMovement = 100
         configure(lp, delegate: c)
-
-        let pan = HorizontalPanGestureRecognizer(
-            target: c, action: #selector(DraggableGestureOverlay.Coordinator.handleSwipe(_:)))
-        pan.longPressGuard = lp
-        configure(pan, delegate: c)
 
         addGestureRecognizer(tap)
         addGestureRecognizer(lp)
-        addGestureRecognizer(pan)
-
         tap.require(toFail: lp)
-        tap.require(toFail: pan)
+
+        // Only install the horizontal pan (swipe) when this row supports it.
+        if supportsSwipe {
+            let pan = HorizontalPanGestureRecognizer(
+                target: c, action: #selector(DraggableGestureOverlay.Coordinator.handleSwipe(_:)))
+            pan.longPressGuard = lp
+            configure(pan, delegate: c)
+            addGestureRecognizer(pan)
+            tap.require(toFail: pan)
+        }
     }
 
     private func configure(_ g: UIGestureRecognizer, delegate: UIGestureRecognizerDelegate) {
@@ -342,7 +353,8 @@ final class HorizontalPanGestureRecognizer: UIPanGestureRecognizer {
         super.touchesMoved(touches, with: event)
         guard state == .possible else { return }
 
-        if let lp = longPressGuard, lp.state == .began || lp.state == .changed {
+        // If the long press is active or has already begun, fail the swipe
+        if let lp = longPressGuard, lp.state == .began || lp.state == .changed || lp.state == .possible {
             state = .failed
             return
         }

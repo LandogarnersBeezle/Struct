@@ -10,13 +10,6 @@ import SwiftData
 
 struct ItemRowView: View {
     let item: Item
-    var isHighlighted: Bool = false
-    /// Callback when drag begins — reports window-coordinate location.
-    var onDragBegan: ((CGPoint) -> Void)? = nil
-    /// Callback when drag location changes — reports window-coordinate location.
-    var onDragChanged: ((CGPoint) -> Void)? = nil
-    /// Callback when drag ends.
-    var onDragEnded: (() -> Void)? = nil
     
     private let calendar = Calendar.current
     
@@ -91,27 +84,6 @@ struct ItemRowView: View {
             Spacer(minLength: 0)
         }
         .padding(12)
-        .background {
-            if isHighlighted {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.12))
-                    .padding(.horizontal, 4)
-                    .transition(.opacity)
-            }
-        }
-        // Install drag-and-drop gesture pipeline
-        .draggableRowInteraction(
-            onTap: { /* tap handling can be added if needed */ },
-            onDragBegan: { [self] windowLoc in
-                onDragBegan?(windowLoc)
-            },
-            onDragChanged: { windowLoc in
-                onDragChanged?(windowLoc)
-            },
-            onDragEnded: {
-                onDragEnded?()
-            }
-        )
     }
 }
 
