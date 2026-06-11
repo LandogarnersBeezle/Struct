@@ -156,10 +156,6 @@ struct ContainerCreationCardView: View {
             .padding(12)
             .background(Color(.systemGray6).opacity(0.5))
             .cornerRadius(10)
-            .onChange(of: effectiveType) { _, _ in
-                // Clear name when type changes to avoid confusion
-                name = ""
-            }
     }
     
     // MARK: - Type Selector

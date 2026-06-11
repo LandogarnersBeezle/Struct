@@ -15,12 +15,14 @@ enum TaskSlot: Identifiable, Hashable {
     case sectionHeader(String)  // Section title
     case item(Item, TaskDropTarget)
     case gap
+    case noContent(String)  // Empty container placeholder with unique context
     
     var id: String {
         switch self {
         case .sectionHeader(let title): return "header:\(title)"
         case .item(let item, _): return "item:\(item.persistentModelID)"
         case .gap: return "gap"
+        case .noContent(let context): return "noContent:\(context)"
         }
     }
 }
@@ -117,11 +119,16 @@ struct ContainerFocusListView: View {
         // Task sections
         for sectionGroup in groupedContent.sectionGroups {
             result.append(.sectionHeader(sectionGroup.title))
-            for item in sectionGroup.groupedItems.unscheduled {
-                result.append(.item(item, .taskSection(section: sectionGroup.section)))
-            }
-            for item in sectionGroup.groupedItems.scheduled {
-                result.append(.item(item, .taskSection(section: sectionGroup.section)))
+            if sectionGroup.groupedItems.isEmpty {
+                // Show "No content" for empty sections
+                result.append(.noContent("section:\(sectionGroup.title)"))
+            } else {
+                for item in sectionGroup.groupedItems.unscheduled {
+                    result.append(.item(item, .taskSection(section: sectionGroup.section)))
+                }
+                for item in sectionGroup.groupedItems.scheduled {
+                    result.append(.item(item, .taskSection(section: sectionGroup.section)))
+                }
             }
         }
         
@@ -131,24 +138,38 @@ struct ContainerFocusListView: View {
             result.append(.sectionHeader(childGroup.title))
             
             if viewModel.isChildContainerExpanded(childGroup.child) {
-                // Show items when expanded
-                if !childGroup.directItems.unscheduled.isEmpty {
-                    for item in childGroup.directItems.unscheduled {
-                        result.append(.item(item, .directItems(containerTarget: childGroup.child.target, isScheduled: false)))
+                // Check if container has any content
+                let hasDirectItems = !childGroup.directItems.unscheduled.isEmpty || !childGroup.directItems.scheduled.isEmpty
+                let hasSectionItems = childGroup.sectionGroups.contains { !$0.groupedItems.isEmpty }
+                
+                if !hasDirectItems && !hasSectionItems {
+                    // Show "No content" for empty expanded containers
+                    result.append(.noContent("container:\(childGroup.title)"))
+                } else {
+                    // Show items when expanded and has content
+                    if !childGroup.directItems.unscheduled.isEmpty {
+                        for item in childGroup.directItems.unscheduled {
+                            result.append(.item(item, .directItems(containerTarget: childGroup.child.target, isScheduled: false)))
+                        }
                     }
-                }
-                if !childGroup.directItems.scheduled.isEmpty {
-                    for item in childGroup.directItems.scheduled {
-                        result.append(.item(item, .directItems(containerTarget: childGroup.child.target, isScheduled: true)))
+                    if !childGroup.directItems.scheduled.isEmpty {
+                        for item in childGroup.directItems.scheduled {
+                            result.append(.item(item, .directItems(containerTarget: childGroup.child.target, isScheduled: true)))
+                        }
                     }
-                }
-                for sectionGroup in childGroup.sectionGroups {
-                    result.append(.sectionHeader(sectionGroup.title))
-                    for item in sectionGroup.groupedItems.unscheduled {
-                        result.append(.item(item, .taskSection(section: sectionGroup.section)))
-                    }
-                    for item in sectionGroup.groupedItems.scheduled {
-                        result.append(.item(item, .taskSection(section: sectionGroup.section)))
+                    for sectionGroup in childGroup.sectionGroups {
+                        result.append(.sectionHeader(sectionGroup.title))
+                        if sectionGroup.groupedItems.isEmpty {
+                            // Show "No content" for empty sections within child containers
+                            result.append(.noContent("nestedSection:\(childGroup.title):\(sectionGroup.title)"))
+                        } else {
+                            for item in sectionGroup.groupedItems.unscheduled {
+                                result.append(.item(item, .taskSection(section: sectionGroup.section)))
+                            }
+                            for item in sectionGroup.groupedItems.scheduled {
+                                result.append(.item(item, .taskSection(section: sectionGroup.section)))
+                            }
+                        }
                     }
                 }
             }
@@ -348,6 +369,11 @@ struct ContainerFocusListView: View {
                     insertion: .scale(scale: 0.85).combined(with: .opacity),
                     removal: .opacity.animation(.easeOut(duration: layoutMetrics.cardFadeOutDuration))
                 ))
+            
+        case .noContent:
+            NoContentRow()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
         }
     }
     
@@ -574,6 +600,20 @@ struct CollapsibleHeaderLabel: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
+    }
+}
+
+struct NoContentRow: View {
+    var body: some View {
+        Text("No content")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .italic()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .background(Color.secondary.opacity(0.03))
+            .cornerRadius(6)
     }
 }
 
