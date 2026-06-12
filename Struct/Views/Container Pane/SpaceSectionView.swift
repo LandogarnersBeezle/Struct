@@ -65,6 +65,7 @@ struct SpaceSectionView: View {
 
     @Environment(SidebarDragState.self)      private var drag
     @Environment(SidebarSwipeSelection.self) private var swipeSelection
+    @Environment(SmoothDragManager.self)     private var smoothDragManager
     @Environment(\.modelContext)             private var context
 
     // MARK: Layout metrics
@@ -174,6 +175,7 @@ struct SpaceSectionView: View {
     @ViewBuilder
     private func rowView(for child: ContainerChild) -> some View {
         let isGhosted = drag.dragging?.id == child.id
+        let isCurrentlyDragging = drag.isDragging && drag.dragging?.id == child.id
         let openCount = child.openTaskCount
         let typeLabel: String = {
             switch child {
@@ -186,6 +188,11 @@ struct SpaceSectionView: View {
                      child.title, typeLabel, openCount, openCount == 1 ? "" : "s")
             : String(format: NSLocalizedString("%@, %@", comment: "Accessibility label format: title, type"),
                      child.title, typeLabel)
+
+        // Determine visual state for smooth drag transition
+        // Use SmoothDragManager's scale and opacity for the floating row effect
+        let currentScale = isCurrentlyDragging ? smoothDragManager.dragScale : 1.0
+        let currentOpacity = isGhosted ? 0 : (isCurrentlyDragging ? smoothDragManager.dragOpacity : 1.0)
 
         ContainerRowView(
             symbol:        child.symbol,
@@ -207,7 +214,13 @@ struct SpaceSectionView: View {
             onDragChanged:    { handleDragChanged(at: $0) },
             onDragEnded:      { handleDragEnded() }
         )
+        // Apply smooth drag transition - scale and opacity during drag
+        .scaleEffect(currentScale)
+        .opacity(currentOpacity)
+        // Ghost row collapses to zero height to avoid pushing rows down
+        // The floating card appears at the same position, creating the morph effect
         .frame(height: isGhosted ? 0 : nil)
+        .animation(.spring(duration: layoutMetrics.dragSpringDuration, bounce: 0), value: isGhosted)
         .clipped()
         .allowsHitTesting(!isGhosted)
     }
@@ -231,17 +244,23 @@ struct SpaceSectionView: View {
             drag.targetIndex   = idx
         }
         drag.begin(child: child, at: loc, height: layoutMetrics.rowHeight)
+        // Use SmoothDragManager for Things 3-like smooth lift animation
+        smoothDragManager.beginDrag(id: child.id, at: windowLoc)
     }
 
     private func handleDragChanged(at windowLoc: CGPoint) {
         guard drag.isDragging else { return }
         drag.location = drag.toSidebar(windowLoc)
         drag.updateTarget(in: allSpaces)
+        // Update smooth drag manager finger position
+        smoothDragManager.updateFingerPosition(windowLoc)
     }
 
     private func handleDragEnded() {
         drag.longPressActive = false
         guard drag.isDragging else { return }
+        // Use SmoothDragManager for smooth drop animation
+        smoothDragManager.endDrag()
         commitDrop()
     }
 

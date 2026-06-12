@@ -44,6 +44,10 @@ struct ContainersSidebarView: View {
 
     @State private var drag = SidebarDragState()
     @State private var swipeSelection = SidebarSwipeSelection()
+    
+    // MARK: Smooth Drag Manager (Things 3-like transitions)
+    
+    @State private var smoothDragManager = SmoothDragManager()
 
     // MARK: Creation card state
 
@@ -145,6 +149,7 @@ struct ContainersSidebarView: View {
         }
         .environment(drag)
         .environment(swipeSelection)
+        .environment(smoothDragManager)
     }
 
     // MARK: - Space slots
@@ -223,19 +228,41 @@ struct ContainersSidebarView: View {
             ))
     }
 
-    // MARK: - Floating drag card
+    // MARK: - Smooth Drag Floating Row (replaces old floating card)
 
     @ViewBuilder
     private var floatingCardOverlay: some View {
-        if let child = drag.floatingCardChild {
+        if smoothDragManager.isDragging,
+           let draggingID = smoothDragManager.draggingID,
+           let child = findChild(by: draggingID) {
+            // Use GeometryReader to position in sidebar coordinate space
+            // Convert window coordinates to sidebar coordinates
             GeometryReader { proxy in
-                DragFloatingCard(child: child, layoutMetrics: layoutMetrics)
-                    .position(x: proxy.size.width / 2, y: drag.location.y)
+                SmoothDragFloatingRow(
+                    child: child,
+                    position: CGPoint(
+                        x: proxy.size.width / 2,
+                        y: smoothDragManager.fingerPosition.y - drag.sidebarOriginInWindow.y
+                    ),
+                    scale: smoothDragManager.dragScale,
+                    opacity: smoothDragManager.dragOpacity,
+                    isVisible: true
+                )
             }
             .allowsHitTesting(false)
-            .transition(.opacity)
-            .zIndex(999)
         }
+    }
+    
+    // MARK: - Helper to find child by ID
+    
+    private func findChild(by id: ContainerChild.ID) -> ContainerChild? {
+        for space in spaces {
+            let children = Containers.children(of: space)
+            if let child = children.first(where: { $0.id == id }) {
+                return child
+            }
+        }
+        return nil
     }
 
     // MARK: - Space header
@@ -243,6 +270,7 @@ struct ContainersSidebarView: View {
     @ViewBuilder
     private func spaceHeader(for space: Space) -> some View {
         let isGhost = drag.draggingSpace?.persistentModelID == space.persistentModelID
+        let isCurrentlyDraggingSpace = drag.isDraggingSpace && drag.draggingSpace?.persistentModelID == space.persistentModelID
         let isSelected = selectedTarget == .space(space)
         let spaceOpenCount = space.items.filter { !$0.isCompleted }.count
         let spaceAccessibilityLabel = spaceOpenCount > 0
@@ -250,6 +278,10 @@ struct ContainersSidebarView: View {
                      space.name, spaceOpenCount, spaceOpenCount == 1 ? "" : "s")
             : String(format: NSLocalizedString("%@, Space, no open tasks", comment: "Space accessibility label"),
                      space.name)
+
+        // Determine visual state for smooth drag transition
+        let currentScale = isCurrentlyDraggingSpace ? drag.dragScale : 1.0
+        let currentOpacity = isGhost ? 0 : (isCurrentlyDraggingSpace ? drag.dragOpacity : 1.0)
 
         VStack(alignment: .leading, spacing: 0) {
             Divider()
@@ -273,11 +305,14 @@ struct ContainersSidebarView: View {
         }
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .cornerRadius(8)
-        .opacity(isGhost ? 0 : 1)
+        // Apply smooth drag transition
+        .scaleEffect(currentScale)
+        .opacity(currentOpacity)
+        // Ghost space header collapses to zero height to let other spaces slide up
         .frame(height: isGhost ? 0 : nil)
         .clipped()
         .allowsHitTesting(!isGhost)
-        .animation(.spring(duration: layoutMetrics.dragSpringDuration, bounce: layoutMetrics.dragSpringBounce), value: isGhost)
+        .animation(.spring(duration: layoutMetrics.dragSpringDuration, bounce: 0), value: isGhost)
     }
 
     @ViewBuilder
@@ -311,9 +346,11 @@ struct ContainersSidebarView: View {
             GeometryReader { proxy in
                 SpaceFloatingCard(space: space, layoutMetrics: layoutMetrics)
                     .position(x: proxy.size.width / 2, y: drag.location.y)
+                    .scaleEffect(drag.isDraggingSpace ? 1.0 : 0.9)
+                    .opacity(drag.isDraggingSpace ? layoutMetrics.cardOpacity : 0)
             }
             .allowsHitTesting(false)
-            .transition(.opacity)
+            .animation(.spring(duration: 0.2, bounce: 0.3), value: drag.spaceFloatingCardSpace != nil)
             .zIndex(999)
         }
     }
@@ -335,6 +372,9 @@ struct ContainersSidebarView: View {
         }
         let h = drag.spaceHeaderFrames[space.persistentModelID]?.height ?? layoutMetrics.headerHeight
         drag.beginSpaceDrag(space: space, at: loc, headerHeight: h)
+        // Note: SmoothDragManager is designed for ContainerChild IDs, not Space IDs
+        // For space dragging, we continue using the existing drag.animateLift()
+        drag.animateLift()
     }
 
     private func handleSpaceDragChanged(at windowLoc: CGPoint) {
@@ -346,6 +386,8 @@ struct ContainersSidebarView: View {
     private func handleSpaceDragEnded() {
         drag.longPressActive = false
         guard drag.isDraggingSpace else { return }
+        // Trigger smooth drop animation before committing
+        drag.animateDrop()
         commitSpaceDrop()
     }
 

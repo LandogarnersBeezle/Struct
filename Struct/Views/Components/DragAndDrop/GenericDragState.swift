@@ -163,6 +163,17 @@ final class SidebarDragState {
     /// `true` during the same synchronous execution as `end()`, then reset.
     private(set) var justEndedDrag = false
 
+    // MARK: - Smooth Drag Visual State
+
+    /// Current scale factor for the dragged row (1.0 = normal, 1.05 = lifted)
+    var dragScale: CGFloat = 1.0
+
+    /// Current opacity for the dragged row (1.0 = normal, 0.7 = lifted)
+    var dragOpacity: CGFloat = 1.0
+
+    /// The specific child currently being dragged (for visual state)
+    var visuallyDraggingChild: ContainerChild? = nil
+
     // MARK: - Space drag state
 
     var draggingSpace: Space? = nil
@@ -286,6 +297,42 @@ final class SidebarDragState {
         withAnimation(.spring(duration: 0.22, bounce: 0.3)) {
             targetSpaceID = b.spaceID
             targetIndex = b.index
+        }
+    }
+
+    // MARK: - Smooth Drag Animations
+
+    /// Animates the row lifting effect when drag begins
+    func animateLift() {
+        withAnimation(.spring(duration: 0.15, bounce: 0)) {
+            dragScale = 1.05
+            dragOpacity = 0.7
+        }
+    }
+
+    /// Animates the row dropping effect when drag ends
+    func animateDrop() {
+        // First phase: quick scale down with bounce
+        withAnimation(.spring(duration: 0.1, bounce: 0.3)) {
+            dragScale = 0.95
+            dragOpacity = 1.0
+        }
+
+        // Second phase: settle to normal
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            withAnimation(.spring(duration: 0.15, bounce: 0)) {
+                self?.dragScale = 1.0
+            }
+        }
+    }
+
+    /// Resets visual state without animation (for cancel)
+    func resetVisualState() {
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            dragScale = 1.0
+            dragOpacity = 1.0
         }
     }
 }
