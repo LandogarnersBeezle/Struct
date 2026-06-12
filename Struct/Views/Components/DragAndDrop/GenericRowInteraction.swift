@@ -192,6 +192,28 @@ struct DraggableGestureOverlay: UIViewRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var parent: DraggableGestureOverlay
         init(_ parent: DraggableGestureOverlay) { self.parent = parent }
+        
+        /// Tracks when scrolling last occurred for this coordinator's view
+        private var lastScrollTime: TimeInterval = 0
+        private let scrollCooldownDuration: TimeInterval = 0.5
+        
+        /// Check if we should allow long press based on recent scroll activity
+        private func shouldAllowLongPress(for view: UIView?) -> Bool {
+            // Find the scroll view in the responder chain
+            var responder = view?.next
+            while let current = responder {
+                if let scrollView = current as? UIScrollView,
+                   scrollView.isDragging || scrollView.isDecelerating {
+                    lastScrollTime = Date().timeIntervalSince1970
+                    return false
+                }
+                responder = current.next
+            }
+            
+            // Check cooldown period
+            let timeSinceLastScroll = Date().timeIntervalSince1970 - lastScrollTime
+            return timeSinceLastScroll >= scrollCooldownDuration
+        }
 
         func gestureRecognizer(_ g: UIGestureRecognizer,
                                shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
@@ -201,6 +223,15 @@ struct DraggableGestureOverlay: UIViewRepresentable {
             // the ScrollView prevents unwanted scrolling during drag.
             if g is UILongPressGestureRecognizer, other is UIPanGestureRecognizer {
                 return true
+            }
+            return true
+        }
+        
+        func gestureRecognizer(_ g: UIGestureRecognizer,
+                               shouldReceive touch: UITouch) -> Bool {
+            // Prevent long press from starting if we're scrolling or recently scrolled
+            if g is UILongPressGestureRecognizer {
+                return shouldAllowLongPress(for: g.view)
             }
             return true
         }
@@ -221,7 +252,8 @@ struct DraggableGestureOverlay: UIViewRepresentable {
         @objc func handleLongPress(_ g: UILongPressGestureRecognizer) {
             let loc = g.location(in: nil)
             switch g.state {
-            case .began:                         parent.onDragBegan(loc)
+            case .began:
+                parent.onDragBegan(loc)
             case .changed:                       parent.onDragChanged(loc)
             case .ended, .cancelled, .failed:    parent.onDragEnded()
             default: break
@@ -237,6 +269,24 @@ final class DraggableGestureHostView: UIView {
 
     weak var coordinator: DraggableGestureOverlay.Coordinator?
     var supportsSwipe: Bool = true
+    
+    /// The scroll view's pan gesture, used to detect active scrolling
+    private weak var scrollViewPanGesture: UIPanGestureRecognizer?
+    
+    /// Timestamp when scrolling last occurred (had significant velocity)
+    private var lastScrollTime: TimeInterval = 0
+    
+    /// Duration after scrolling ends during which drag is disabled
+    private let scrollCooldownDuration: TimeInterval = 0.5
+    
+    /// Reference to the long press gesture for cancellation during scroll
+    private var longPressGesture: UILongPressGestureRecognizer?
+    
+    /// Timer to reset the scroll cooldown state
+    private var scrollCooldownTimer: Timer?
+    
+    /// Flag to indicate if the current long press should be ignored due to scrolling
+    private var shouldIgnoreLongPress: Bool = false
 
     var rowAccessibilityLabel: String? {
         didSet { accessibilityLabel = rowAccessibilityLabel }
@@ -286,11 +336,54 @@ final class DraggableGestureHostView: UIView {
                            argument: NSLocalizedString("Use two-finger drag to reorder", comment: "Accessibility instruction"))
         return true
     }
+    
+    /// Check if scrolling is currently active or recently occurred
+    /// This prevents drag initiation during or immediately after scrolling
+    var isScrollingActively: Bool {
+        // Check if scroll view pan gesture is active
+        if let pan = scrollViewPanGesture,
+           pan.state == .changed || pan.state == .began {
+            let velocity = pan.velocity(in: superview)
+            // If there's significant velocity, we're actively scrolling
+            if abs(velocity.y) > 50 || abs(velocity.x) > 50 {
+                lastScrollTime = Date().timeIntervalSince1970
+                return true
+            }
+        }
+        
+        // Check if we're still in the cooldown period after scrolling
+        let timeSinceLastScroll = Date().timeIntervalSince1970 - lastScrollTime
+        if timeSinceLastScroll < scrollCooldownDuration {
+            return true
+        }
+        
+        return false
+    }
+    
+    /// Find and store the scroll view's pan gesture from the responder chain
+    private func findScrollViewPanGesture() {
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let scrollView = current as? UIScrollView {
+                scrollViewPanGesture = scrollView.panGestureRecognizer
+                return
+            }
+            responder = current.next
+        }
+    }
 
     func install() {
         guard let c = coordinator else { return }
         backgroundColor = .clear
         isUserInteractionEnabled = true
+        
+        // Find the scroll view's pan gesture for scroll detection
+        findScrollViewPanGesture()
+        
+        // Observe the scroll view's pan gesture to track scrolling state
+        if let panGesture = scrollViewPanGesture {
+            panGesture.addTarget(self, action: #selector(handleScrollViewPan(_:)))
+        }
 
         let tap = UITapGestureRecognizer(
             target: c, action: #selector(DraggableGestureOverlay.Coordinator.handleTap(_:)))
@@ -298,9 +391,10 @@ final class DraggableGestureHostView: UIView {
 
         let lp = UILongPressGestureRecognizer(
             target: c, action: #selector(DraggableGestureOverlay.Coordinator.handleLongPress(_:)))
-        lp.minimumPressDuration = 0.3
+        lp.minimumPressDuration = 1.0  // Increased to 1 second to prevent accidental triggers
         lp.allowableMovement = 100
         configure(lp, delegate: c)
+        longPressGesture = lp
 
         addGestureRecognizer(tap)
         addGestureRecognizer(lp)
@@ -314,6 +408,33 @@ final class DraggableGestureHostView: UIView {
             configure(pan, delegate: c)
             addGestureRecognizer(pan)
             tap.require(toFail: pan)
+        }
+    }
+    
+    /// Called when the scroll view's pan gesture state changes
+    @objc private func handleScrollViewPan(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .changed:
+            let velocity = gesture.velocity(in: superview)
+            // If there's significant velocity, update the last scroll time
+            if abs(velocity.y) > 50 || abs(velocity.x) > 50 {
+                lastScrollTime = Date().timeIntervalSince1970
+                // Cancel any pending long press to prevent accidental drag
+                longPressGesture?.state = .cancelled
+            }
+        case .ended, .cancelled, .failed:
+            // When scrolling ends, start a cooldown timer
+            startScrollCooldownTimer()
+        default:
+            break
+        }
+    }
+    
+    /// Start a timer to reset the scroll cooldown state after a delay
+    private func startScrollCooldownTimer() {
+        scrollCooldownTimer?.invalidate()
+        scrollCooldownTimer = Timer.scheduledTimer(withTimeInterval: scrollCooldownDuration, repeats: false) { [weak self] _ in
+            self?.lastScrollTime = 0 // Reset to allow drag again
         }
     }
 
@@ -337,6 +458,10 @@ final class DraggableGestureHostView: UIView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesCancelled(touches, with: event)
         coordinator?.parent.isPressed = false
+    }
+    
+    deinit {
+        scrollCooldownTimer?.invalidate()
     }
 }
 
