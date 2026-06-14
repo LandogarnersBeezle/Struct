@@ -10,6 +10,13 @@ import SwiftData
 
 struct ItemRowView: View {
     let item: Item
+    let groupContext: ItemGroupContext
+    let isDragEnabled: Bool
+    let unscheduledItems: [Item]
+    
+    @Environment(ItemDragState.self) private var itemDragState
+    
+    @State private var isGhostRow = false
     
     private let calendar = Calendar.current
     
@@ -46,7 +53,10 @@ struct ItemRowView: View {
     }
     
     var body: some View {
-        HStack(alignment: .top, spacing: 4) {
+        let isBeingDragged = itemDragState.draggingItem?.id == item.id
+        let isGhost = isBeingDragged
+        
+        return HStack(alignment: .top, spacing: 4) {
             // Completion indicator
             Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(item.isCompleted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
@@ -84,12 +94,36 @@ struct ItemRowView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
+        // Apply ghost row styling when being dragged
+        .opacity(isGhost ? 0.3 : 1.0)
+        // Report frame for drop target calculation
+        .background(
+            GeometryReader { geometry in
+                Color.clear
+                    .preference(
+                        key: ItemRowFrameKey.self,
+                        value: [item.id: geometry.frame(in: .named("ItemContentView"))]
+                    )
+            }
+        )
+        // Add drag interaction if enabled and item is unscheduled
+        .modifier(ItemRowDragModifier(
+            item: item,
+            groupContext: groupContext,
+            isDragEnabled: isDragEnabled && isUnscheduled(item: item),
+            unscheduledItems: unscheduledItems
+        ))
+    }
+    
+    /// Check if item is unscheduled (no doDate)
+    private func isUnscheduled(item: Item) -> Bool {
+        item.doDate == nil
     }
 }
 
 #Preview {
     let container = try! ModelContainer(
-        for: Space.self, Project.self, List.self, Item.self,
+        for: Space.self, Project.self, List.self, Item.self, TaskSection.self,
         configurations: ModelConfiguration(isStoredInMemoryOnly: true)
     )
     let context = container.mainContext
@@ -124,16 +158,57 @@ struct ItemRowView: View {
     
     for item in [plain, full, overdue, done, laterThisYear, nextYear] { context.insert(item) }
     
+    // Create a mock target for preview
+    guard let inbox = try? context.fetch(FetchDescriptor<List>()).first else {
+        return EmptyView()
+    }
+    
+    let allItems = [plain, full, overdue, done, laterThisYear, nextYear]
+    
     return ScrollView {
         LazyVStack(spacing: 10) {
-            ItemRowView(item: plain)
-            ItemRowView(item: full)
-            ItemRowView(item: overdue)
-            ItemRowView(item: done)
-            ItemRowView(item: laterThisYear)
-            ItemRowView(item: nextYear)
+            ItemRowView(item: plain, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
+            ItemRowView(item: full, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
+            ItemRowView(item: overdue, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
+            ItemRowView(item: done, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
+            ItemRowView(item: laterThisYear, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
+            ItemRowView(item: nextYear, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
         }
         .padding()
     }
     .modelContainer(container)
+}
+
+// MARK: - Item Row Drag Modifier
+
+/// View modifier that adds long-press drag interaction to item rows.
+struct ItemRowDragModifier: ViewModifier {
+    let item: Item
+    let groupContext: ItemGroupContext
+    let isDragEnabled: Bool
+    let unscheduledItems: [Item]
+    
+    @Environment(ItemDragState.self) private var itemDragState
+    
+    func body(content: Content) -> some View {
+        content
+            .draggableRowInteraction(
+                supportsSwipe: false,
+                accessibilityLabel: item.title,
+                accessibilityHint: "Long press to reorder within group",
+                onTap: {},
+                onDragBegan: { location in
+                    guard isDragEnabled else { return }
+                    itemDragState.beginDrag(item: item, context: groupContext, at: location, height: 44)
+                },
+                onDragChanged: { location in
+                    guard isDragEnabled, itemDragState.isDragging else { return }
+                    itemDragState.updateDragPosition(location, among: unscheduledItems)
+                },
+                onDragEnded: {
+                    guard isDragEnabled else { return }
+                    itemDragState.endDrag()
+                }
+            )
+    }
 }
