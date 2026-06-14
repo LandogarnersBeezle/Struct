@@ -1,47 +1,11 @@
 //
-//  DragFloatingCard.swift
+//  SpaceFloatingCard.swift
 //  Struct
 //
 //  Created by Otto Kiefer on 10.06.2026.
 //
 
 import SwiftUI
-
-// MARK: - Drag Floating Card
-
-/// Floating drag card for container items (lists/projects).
-///
-/// This card appears during drag operations and follows the user's finger,
-/// providing visual feedback about what's being dragged. It uses the same
-/// visual styling as ContainerRowView for consistency.
-struct DragFloatingCard: View {
-    let child: ContainerChild
-    let layoutMetrics: LayoutMetrics
-
-    init(child: ContainerChild, layoutMetrics: LayoutMetrics = .sidebar) {
-        self.child = child
-        self.layoutMetrics = layoutMetrics
-    }
-
-    var body: some View {
-        ContainerRowView(
-            symbol: child.symbol,
-            title: child.title,
-            openTaskCount: child.openTaskCount,
-            color: child.containerColor
-        )
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: layoutMetrics.cardCornerRadius, style: .continuous)
-                .fill(.background)
-                .shadow(color: .black.opacity(layoutMetrics.cardShadowOpacity),
-                        radius: layoutMetrics.cardShadowRadius, y: 6)
-                .opacity(layoutMetrics.cardOpacity)
-        )
-        .transition(.opacity)
-    }
-}
 
 // MARK: - Space Floating Card
 

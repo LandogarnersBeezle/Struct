@@ -74,7 +74,7 @@ struct ContainersSidebarView: View {
                 if let inbox {
                     InboxRow(inbox: inbox, isSelected: selectedTarget == .list(inbox), onSelect: onSelect)
                 }
-
+                Spacer(minLength: 10)
                 // Scroll content below inbox
                 ZStack(alignment: .top) {
                     scrollContent
@@ -284,7 +284,7 @@ struct ContainersSidebarView: View {
         let currentOpacity = isGhost ? 0 : (isCurrentlyDraggingSpace ? drag.dragOpacity : 1.0)
 
         VStack(alignment: .leading, spacing: 0) {
-            Divider()
+            // Divider()
             spaceRowContent(for: space)
                 .padding(.bottom, 10)
                 .draggableRowInteraction(
@@ -303,7 +303,10 @@ struct ContainersSidebarView: View {
                                        value: [space.persistentModelID: geo.frame(in: .named("sidebar"))])
             }
         }
-        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        // Opaque background to prevent content from showing through when sticky
+        .background(Color(.systemBackground))
+        // Selection highlight on top of opaque background
+        .overlay(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .cornerRadius(8)
         // Apply smooth drag transition
         .scaleEffect(currentScale)
