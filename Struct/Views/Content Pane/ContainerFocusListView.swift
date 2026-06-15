@@ -40,17 +40,20 @@ struct ContainerFocusListView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             ScrollView {
+                // Coordinate space for frame calculations
+                // NOTE: This *must* sit outside LazyVStack (or as a background)
+                // so it is never lazy-loaded off-screen when the user scrolls down.
+                GeometryReader { geometry in
+                    Color.clear
+                        .frame(width: 0, height: 0)
+                        .preference(key: ItemContentOriginKey.self, value: geometry.frame(in: .global).origin)
+                }
+                .frame(width: 0, height: 0)
+                .onPreferenceChange(ItemContentOriginKey.self) { origin in
+                    itemDragState.contentOriginInWindow = origin
+                }
+                
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    // Coordinate space for frame calculations
-                    GeometryReader { geometry in
-                        Color.clear
-                            .frame(width: 0, height: 0)
-                            .preference(key: ItemContentOriginKey.self, value: geometry.frame(in: .global).origin)
-                    }
-                    .onPreferenceChange(ItemContentOriginKey.self) { origin in
-                        itemDragState.contentOriginInWindow = origin
-                    }
-                    
                     // Direct items - Unscheduled
                     if !directUnscheduledSlots.isEmpty {
                         let unscheduledItems = groupedContent.directItems.unscheduled
@@ -245,9 +248,23 @@ struct ContainerFocusListView: View {
                     dragScale: itemDragState.dragScale,
                     dragOpacity: itemDragState.dragOpacity,
                     fingerPosition: itemDragState.location,
-                    contentOriginInWindow: itemDragState.contentOriginInWindow
+                    contentOriginInWindow: itemDragState.scrollViewOriginInWindow
                 )
             }
+        }
+        // Overlay the GeometryReader on the ZStack to measure its global origin.
+        // Uses a preference key so the value is reported after layout is complete
+        // (unlike onAppear which may fire before the frame is set).
+        .overlay(alignment: .topLeading) {
+            GeometryReader { geometry in
+                Color.clear
+                    .preference(key: ScrollViewOriginKey.self, value: geometry.frame(in: .global).origin)
+            }
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+        }
+        .onPreferenceChange(ScrollViewOriginKey.self) { origin in
+            itemDragState.scrollViewOriginInWindow = origin
         }
     }
     

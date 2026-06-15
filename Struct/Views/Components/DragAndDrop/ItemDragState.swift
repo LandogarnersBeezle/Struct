@@ -104,6 +104,11 @@ final class ItemDragState {
     /// Origin of the content view in `.global` (window) coordinates.
     var contentOriginInWindow: CGPoint = .zero
     
+    /// Origin of the ScrollView viewport in `.global` (window) coordinates.
+    /// Unlike `contentOriginInWindow`, this does NOT change when scrolled.
+    /// Used to position the floating drag row correctly.
+    var scrollViewOriginInWindow: CGPoint = .zero
+    
     /// Keeps the floating row alive through its fade-out after a drop.
     private(set) var floatingItem: Item? = nil
     
@@ -329,6 +334,16 @@ struct ItemRowFrameKey: PreferenceKey {
 
 /// Preference key for content view viewport origin in window coordinates.
 struct ItemContentOriginKey: PreferenceKey {
+    static var defaultValue: CGPoint = .zero
+    static func reduce(value: inout CGPoint, nextValue: () -> CGPoint) {
+        value = nextValue()
+    }
+}
+
+/// Preference key for the ScrollView viewport origin in window coordinates.
+/// Unlike `ItemContentOriginKey` (content origin that scrolls), this captures
+/// the ScrollView's own frame origin which stays fixed.
+struct ScrollViewOriginKey: PreferenceKey {
     static var defaultValue: CGPoint = .zero
     static func reduce(value: inout CGPoint, nextValue: () -> CGPoint) {
         value = nextValue()
