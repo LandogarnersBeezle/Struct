@@ -16,6 +16,7 @@ struct ContainerFocusListView: View {
     let modelContext: ModelContext
     
     @State private var itemDragState = ItemDragState()
+    @State private var saveError: DataError?
 
     private var groupedContent: (directItems: ContainerFocusViewModel.GroupedItems, sectionGroups: [ContainerFocusViewModel.SectionGroup]) {
         viewModel.groupedContent(for: target)
@@ -61,7 +62,8 @@ struct ContainerFocusListView: View {
                                         item: item,
                                         groupContext: .directUnscheduled(target),
                                         isDragEnabled: true,
-                                        unscheduledItems: unscheduledItems
+                                        unscheduledItems: unscheduledItems,
+                                        commitDrop: { [self] in self.commitDrop() }
                                     )
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 8)
@@ -70,6 +72,7 @@ struct ContainerFocusListView: View {
                                 }
                             }
                         }
+                        .animation(.spring(duration: 0.22, bounce: 0), value: directUnscheduledSlots.map(\.id))
                     }
 
                     // Direct items - Scheduled
@@ -80,7 +83,8 @@ struct ContainerFocusListView: View {
                                     item: item,
                                     groupContext: .directUnscheduled(target),
                                     isDragEnabled: false,
-                                    unscheduledItems: []
+                                    unscheduledItems: [],
+                                    commitDrop: {}
                                 )
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
@@ -97,22 +101,31 @@ struct ContainerFocusListView: View {
                                     .padding(.vertical, 4)
                             } else {
                                 let sectionUnscheduled = sectionGroup.groupedItems.unscheduled
-                                ForEach(sectionUnscheduled) { item in
-                                    ItemRowView(
-                                        item: item,
-                                        groupContext: .sectionUnscheduled(sectionGroup.section),
-                                        isDragEnabled: true,
-                                        unscheduledItems: sectionUnscheduled
-                                    )
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
+                                let sectionGroupContext = ItemGroupContext.sectionUnscheduled(sectionGroup.section)
+                                ForEach(slotsForItems(sectionUnscheduled, groupContext: sectionGroupContext), id: \.id) { slot in
+                                    switch slot {
+                                    case .item(let item):
+                                        ItemRowView(
+                                            item: item,
+                                            groupContext: sectionGroupContext,
+                                            isDragEnabled: true,
+                                            unscheduledItems: sectionUnscheduled,
+                                            commitDrop: { [self] in self.commitDrop() }
+                                        )
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                    case .gap:
+                                        ItemDropGapView()
+                                    }
                                 }
+                                .animation(.spring(duration: 0.22, bounce: 0), value: slotsForItems(sectionUnscheduled, groupContext: sectionGroupContext).map(\.id))
                                 ForEach(sectionGroup.groupedItems.scheduled) { item in
                                     ItemRowView(
                                         item: item,
                                         groupContext: .sectionUnscheduled(sectionGroup.section),
                                         isDragEnabled: false,
-                                        unscheduledItems: []
+                                        unscheduledItems: [],
+                                        commitDrop: {}
                                     )
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 8)
@@ -128,16 +141,24 @@ struct ContainerFocusListView: View {
                                 // Child container's direct items - Unscheduled
                                 if !childGroup.directItems.unscheduled.isEmpty {
                                     let childUnscheduled = childGroup.directItems.unscheduled
-                                    ForEach(childUnscheduled) { item in
-                                        ItemRowView(
-                                            item: item,
-                                            groupContext: .childContainerUnscheduled(childGroup.child),
-                                            isDragEnabled: true,
-                                            unscheduledItems: childUnscheduled
-                                        )
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
+                                    let childGroupContext = ItemGroupContext.childContainerUnscheduled(childGroup.child)
+                                    ForEach(slotsForItems(childUnscheduled, groupContext: childGroupContext), id: \.id) { slot in
+                                        switch slot {
+                                        case .item(let item):
+                                            ItemRowView(
+                                                item: item,
+                                                groupContext: childGroupContext,
+                                                isDragEnabled: true,
+                                                unscheduledItems: childUnscheduled,
+                                                commitDrop: { [self] in self.commitDrop() }
+                                            )
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                        case .gap:
+                                            ItemDropGapView()
+                                        }
                                     }
+                                    .animation(.spring(duration: 0.22, bounce: 0), value: slotsForItems(childUnscheduled, groupContext: childGroupContext).map(\.id))
                                 }
 
                                 // Child container's direct items - Scheduled
@@ -147,7 +168,8 @@ struct ContainerFocusListView: View {
                                             item: item,
                                             groupContext: .childContainerUnscheduled(childGroup.child),
                                             isDragEnabled: false,
-                                            unscheduledItems: []
+                                            unscheduledItems: [],
+                                            commitDrop: {}
                                         )
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 8)
@@ -163,22 +185,31 @@ struct ContainerFocusListView: View {
                                                 .padding(.vertical, 4)
                                         } else {
                                             let childSectionUnscheduled = sectionGroup.groupedItems.unscheduled
-                                            ForEach(childSectionUnscheduled) { item in
-                                                ItemRowView(
-                                                    item: item,
-                                                    groupContext: .sectionUnscheduled(sectionGroup.section),
-                                                    isDragEnabled: true,
-                                                    unscheduledItems: childSectionUnscheduled
-                                                )
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 8)
+                                            let childSectionGroupContext = ItemGroupContext.sectionUnscheduled(sectionGroup.section)
+                                            ForEach(slotsForItems(childSectionUnscheduled, groupContext: childSectionGroupContext), id: \.id) { slot in
+                                                switch slot {
+                                                case .item(let item):
+                                                    ItemRowView(
+                                                        item: item,
+                                                        groupContext: childSectionGroupContext,
+                                                        isDragEnabled: true,
+                                                        unscheduledItems: childSectionUnscheduled,
+                                                        commitDrop: { [self] in self.commitDrop() }
+                                                    )
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.vertical, 8)
+                                                case .gap:
+                                                    ItemDropGapView()
+                                                }
                                             }
+                                            .animation(.spring(duration: 0.22, bounce: 0), value: slotsForItems(childSectionUnscheduled, groupContext: childSectionGroupContext).map(\.id))
                                             ForEach(sectionGroup.groupedItems.scheduled) { item in
                                                 ItemRowView(
                                                     item: item,
                                                     groupContext: .sectionUnscheduled(sectionGroup.section),
                                                     isDragEnabled: false,
-                                                    unscheduledItems: []
+                                                    unscheduledItems: [],
+                                                    commitDrop: {}
                                                 )
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 8)
@@ -192,18 +223,17 @@ struct ContainerFocusListView: View {
                 }
                 .coordinateSpace(name: "ItemContentView")
                 .padding(.bottom, 80)
-                // Observe drag state changes for target index calculation
-                // Note: targetIndex is now updated directly in updateDragPosition
-                // Handle reordering when drag ends
-                .onChange(of: itemDragState.itemAtEnd) { oldValue, newValue in
-                    if let draggedItem = itemDragState.itemAtEnd {
-                        performReorder(item: draggedItem, toIndex: itemDragState.targetIndexAtEnd)
-                        itemDragState.clearEndState()
-                    }
-                }
             }
-            .scrollDisabled(itemDragState.isDragging)
+            .overlay {
+                ItemAutoScrollOverlay(
+                    dragState: itemDragState,
+                    contentHeight: { estimateContentHeight() }
+                )
+            }
+            .scrollDisabled(itemDragState.longPressActive || itemDragState.isDragging)
             .environment(itemDragState)
+            .errorAlert($saveError)
+            .onPreferenceChange(ItemRowFrameKey.self) { itemDragState.rowFrames = $0 }
             .onPreferenceChange(SectionPositionPreferenceKey.self) { positions in
                 updateActiveNestedSections(from: positions)
             }
@@ -222,6 +252,47 @@ struct ContainerFocusListView: View {
     }
     
     // MARK: - Computed Slot Properties
+    
+    /// Builds a slot array with optional gap insertion for the given items and group context.
+    ///
+    /// Mirrors `SpaceSectionView.slots` — the dragged item is **kept** in the
+    /// array (not removed) so its `ItemRowView` and the backing UIKit gesture
+    /// recognizer are never destroyed mid-drag. The view ghosts itself to zero
+    /// height/opacity via `ItemRowView`'s existing isGhost logic.
+    ///
+    /// - Parameters:
+    ///   - items: The unscheduled items for a specific group.
+    ///   - groupContext: The `ItemGroupContext` that identifies this group. When
+    ///     provided, a gap is inserted only if the current drag context matches.
+    /// - Returns: Slots with the dragged item kept in place and a gap inserted
+    ///   at the drop target position when dragging within this group.
+    private func slotsForItems(_ items: [Item], groupContext: ItemGroupContext? = nil) -> [ItemSlotItem] {
+        guard !items.isEmpty else { return [] }
+        
+        // Always start with all items — never filter out the dragged item.
+        var slots = items.map { ItemSlotItem.item($0) }
+        
+        // If not dragging, or contexts don't match, return plain slots.
+        guard itemDragState.isDragging,
+              let dragContext = itemDragState.groupContext,
+              let groupContext = groupContext,
+              dragContext == groupContext else {
+            return slots
+        }
+        
+        // `targetIndex` is computed against items *excluding* the dragged one
+        // (see ItemRowDragModifier.onDragChanged). Because we keep the ghost in
+        // the array we must compensate: when the ghost sits *before* the
+        // insertion point, every slot beyond it is shifted by one.
+        let ghostPos = items.firstIndex(where: { $0.id == itemDragState.draggingItem?.id })
+        let adjusted = ghostPos.map { itemDragState.targetIndex > $0 ? itemDragState.targetIndex + 1
+                                                                     : itemDragState.targetIndex }
+                       ?? itemDragState.targetIndex
+        let idx = max(0, min(adjusted, slots.count))
+        slots.insert(.gap, at: idx)
+        
+        return slots
+    }
     
     /// Slots for direct unscheduled items with gap inserted at drop position.
     private var directUnscheduledSlots: [ItemSlotItem] {
@@ -243,38 +314,13 @@ struct ContainerFocusListView: View {
         default: targetsMatch = false
         }
         
-        guard targetsMatch, itemDragState.targetIndex <= items.count else {
-            return items.map { ItemSlotItem.item($0) }
-        }
+        guard targetsMatch else { return items.map { ItemSlotItem.item($0) } }
         
-        // Build slots: keep dragged item in array, insert gap at target
-        var slots: [ItemSlotItem] = []
-        let draggedID = itemDragState.draggingItem?.id
-        
-        for (index, item) in items.enumerated() {
-            // Insert gap at target index
-            if index == itemDragState.targetIndex {
-                slots.append(.gap)
-            }
-            // Add item (keep dragged item for gesture continuity, it will be hidden via opacity)
-            slots.append(.item(item))
-        }
-        
-        // If gap should be at the end
-        if itemDragState.targetIndex == items.count {
-            slots.append(.gap)
-        }
-        
-        return slots
+        // Build with the reusable helper
+        return slotsForItems(items, groupContext: .directUnscheduled(target))
     }
     
     // MARK: - Drag and Drop Logic
-    
-    /// Gets the unscheduled items for a given group context (excluding the dragged item).
-    private func getUnscheduledItems(for context: ItemGroupContext) -> [Item] {
-        let allUnscheduled = getAllUnscheduledItems(for: context)
-        return allUnscheduled.filter { $0.id != itemDragState.draggingItem?.id }
-    }
     
     /// Gets all unscheduled items for a given group context (including the dragged item).
     private func getAllUnscheduledItems(for context: ItemGroupContext) -> [Item] {
@@ -309,9 +355,26 @@ struct ContainerFocusListView: View {
         }
     }
     
+    /// Commits the drop synchronously when drag ends (matches sidebar's commitDrop pattern).
+    private func commitDrop() {
+        // Capture state while it's still valid (draggingItem/groupContext are still set)
+        guard let item = itemDragState.draggingItem,
+              let context = itemDragState.groupContext else {
+            itemDragState.endDrag()
+            return
+        }
+        
+        let targetIdx = itemDragState.targetIndex
+        
+        // End the drag (animates and clears dragging state)
+        itemDragState.endDrag()
+        
+        // Now perform the reorder with captured data
+        performReorder(item: item, toIndex: targetIdx, context: context)
+    }
+    
     /// Performs the reordering of an item to a new index within its group.
-    private func performReorder(item: Item, toIndex: Int) {
-        guard let context = itemDragState.groupContext else { return }
+    private func performReorder(item: Item, toIndex: Int, context: ItemGroupContext) {
         
         let allUnscheduled = getAllUnscheduledItems(for: context)
         guard !allUnscheduled.isEmpty else { return }
@@ -331,36 +394,36 @@ struct ContainerFocusListView: View {
             item.touch()
         }
         
-        // Save the context
-        try? modelContext.save()
+        // Save the context with proper error handling
+        do {
+            try modelContext.saveOrThrow()
+        } catch let error as DataError {
+            saveError = error
+        } catch {
+            saveError = .saveFailed(error)
+        }
     }
     
-    /// Computes slot items with a gap inserted at the drop position during drag.
-    private func computeSlotItems(items: [Item], context: ItemGroupContext) -> [ItemSlotItem] {
-        // Check if we're dragging within this context
-        guard itemDragState.isDragging,
-              itemDragState.groupContext == context,
-              itemDragState.targetIndex <= items.count else {
-            return items.map { ItemSlotItem.item($0) }
+    // MARK: - Content Height Estimation
+    
+    /// Estimates total content height for auto-scroll calculations.
+    private func estimateContentHeight() -> CGFloat {
+        let directCount = groupedContent.directItems.unscheduled.count + groupedContent.directItems.scheduled.count
+        let sectionItemCount = groupedContent.sectionGroups.reduce(0) { $0 + $1.groupedItems.unscheduled.count + $1.groupedItems.scheduled.count }
+        let sectionCount = groupedContent.sectionGroups.count
+        
+        var childItemCount = 0
+        for group in childContainerGroups {
+            let direct = group.directItems.unscheduled.count + group.directItems.scheduled.count
+            let nested = group.sectionGroups.reduce(0) { $0 + $1.groupedItems.unscheduled.count + $1.groupedItems.scheduled.count }
+            childItemCount += direct + nested
         }
         
-        // Insert gap at the target index
-        var slots: [ItemSlotItem] = []
-        for (index, item) in items.enumerated() {
-            if index == itemDragState.targetIndex {
-                slots.append(.gap)
-            }
-            // Only add item if it's not the one being dragged
-            if item.id != itemDragState.draggingItem?.id {
-                slots.append(.item(item))
-            }
-        }
-        // If gap should be at the end
-        if itemDragState.targetIndex == items.count {
-            slots.append(.gap)
-        }
-        
-        return slots
+        let totalItems = directCount + sectionItemCount + childItemCount
+        let totalSections = sectionCount + childContainerGroups.count
+        let rowHeight = layoutMetrics.rowHeight
+        let headerHeight = layoutMetrics.headerHeight
+        return CGFloat(totalItems) * rowHeight + CGFloat(totalSections) * headerHeight + 200
     }
 
     // MARK: - Section Headers

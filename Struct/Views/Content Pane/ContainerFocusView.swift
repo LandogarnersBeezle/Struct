@@ -586,8 +586,13 @@ struct ContainerFocusView: View {
     // Direct tasks in space (not in a section)
     Item.create(in: context, title: "Space task 1 (unscheduled)", sortIndex: 0, parent: .space(space))
     Item.create(in: context, title: "Space task 2 (unscheduled)", sortIndex: 1, parent: .space(space))
-    Item.create(in: context, title: "Space task 3 (scheduled)", doDate: .now.addingTimeInterval(86_400), sortIndex: 2, parent: .space(space))
-    Item.create(in: context, title: "Space task 4 (scheduled)", doDate: .now.addingTimeInterval(86_400 * 2), sortIndex: 3, parent: .space(space))
+    Item.create(in: context, title: "Space task 3 (unscheduled)", sortIndex: 1, parent: .space(space))
+    Item.create(in: context, title: "Space task 4 (unscheduled)", sortIndex: 1, parent: .space(space))
+    Item.create(in: context, title: "Space task 5 (unscheduled)", sortIndex: 1, parent: .space(space))
+    Item.create(in: context, title: "Space task 6 (unscheduled)", sortIndex: 1, parent: .space(space))
+    Item.create(in: context, title: "Space task 7 (unscheduled)", sortIndex: 1, parent: .space(space))
+    Item.create(in: context, title: "Space task 8 (scheduled)", doDate: .now.addingTimeInterval(86_400), sortIndex: 2, parent: .space(space))
+    Item.create(in: context, title: "Space task 9 (scheduled)", doDate: .now.addingTimeInterval(86_400 * 2), sortIndex: 3, parent: .space(space))
     
     // Task section directly in space
     let spaceSection = TaskSection(title: "Space Section", parent: .space(space))

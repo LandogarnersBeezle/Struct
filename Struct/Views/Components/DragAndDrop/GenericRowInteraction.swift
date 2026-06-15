@@ -229,10 +229,8 @@ struct DraggableGestureOverlay: UIViewRepresentable {
         
         func gestureRecognizer(_ g: UIGestureRecognizer,
                                shouldReceive touch: UITouch) -> Bool {
-            // Prevent long press from starting if we're scrolling or recently scrolled
-            if g is UILongPressGestureRecognizer {
-                return shouldAllowLongPress(for: g.view)
-            }
+            // Allow long press to proceed — scroll detection is handled by
+            // DraggableGestureHostView which cancels the long press if scrolling
             return true
         }
 
@@ -255,7 +253,10 @@ struct DraggableGestureOverlay: UIViewRepresentable {
             case .began:
                 parent.onDragBegan(loc)
             case .changed:                       parent.onDragChanged(loc)
-            case .ended, .cancelled, .failed:    parent.onDragEnded()
+            case .ended, .cancelled, .failed:
+                parent.onDragEnded()
+                // Reset isPressed state when drag ends
+                parent.isPressed = false
             default: break
             }
         }

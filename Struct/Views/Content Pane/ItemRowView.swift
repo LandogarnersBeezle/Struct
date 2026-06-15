@@ -13,6 +13,7 @@ struct ItemRowView: View {
     let groupContext: ItemGroupContext
     let isDragEnabled: Bool
     let unscheduledItems: [Item]
+    let commitDrop: () -> Void  // Synchronous commit callback (like sidebar's commitDrop)
     
     @Environment(ItemDragState.self) private var itemDragState
     
@@ -93,9 +94,11 @@ struct ItemRowView: View {
             
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 2)
-        // Apply ghost row styling when being dragged
-        .opacity(isGhost ? 0.3 : 1.0)
+        .padding(.vertical, isGhost ? 0 : 2)
+        // Ghost row collapses to zero opacity and height to avoid pushing rows down
+        .opacity(isGhost ? 0 : 1.0)
+        .frame(height: isGhost ? 0 : nil)
+        .clipped()
         // Report frame for drop target calculation
         .background(
             GeometryReader { geometry in
@@ -111,7 +114,8 @@ struct ItemRowView: View {
             item: item,
             groupContext: groupContext,
             isDragEnabled: isDragEnabled && isUnscheduled(item: item),
-            unscheduledItems: unscheduledItems
+            unscheduledItems: unscheduledItems,
+            commitDrop: commitDrop
         ))
     }
     
@@ -122,61 +126,24 @@ struct ItemRowView: View {
 }
 
 #Preview {
-    let container = try! ModelContainer(
-        for: Space.self, Project.self, List.self, Item.self, TaskSection.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-    )
-    let context = container.mainContext
-    List.ensureInbox(in: context)
+    PreviewWrapper()
+}
+
+struct PreviewWrapper: View {
+    @State private var itemDragState = ItemDragState()
     
-    // Plain item — no dates, no notes
-    let plain = Item(title: "Pick up dry cleaning")
-    
-    // Scheduled + due date, with notes
-    let full = Item(title: "Book moving truck",
-                    notes: "Compare at least three quotes before booking.",
-                    doDate: .now.addingTimeInterval(86_400 * 2),
-                    dueDate: .now.addingTimeInterval(86_400 * 7))
-    
-    // Overdue item
-    let overdue = Item(title: "Submit tax return",
-                       dueDate: .now.addingTimeInterval(-86_400 * 2))
-    
-    // Completed item
-    let done = Item(title: "Reply to landlord",
-                    doDate: .now.addingTimeInterval(-86_400))
-    done.isCompleted = true
-    
-    // Item with date in current year but beyond 7 days
-    let laterThisYear = Item(title: "Schedule annual checkup",
-                             doDate: .now.addingTimeInterval(86_400 * 30))
-    
-    // Item with date in a different year
-    let nextYear = Item(title: "Renew passport",
-                        doDate: .now.addingTimeInterval(86_400 * 400),
-                        dueDate: .now.addingTimeInterval(86_400 * 450))
-    
-    for item in [plain, full, overdue, done, laterThisYear, nextYear] { context.insert(item) }
-    
-    // Create a mock target for preview
-    guard let inbox = try? context.fetch(FetchDescriptor<List>()).first else {
-        return EmptyView()
-    }
-    
-    let allItems = [plain, full, overdue, done, laterThisYear, nextYear]
-    
-    return ScrollView {
-        LazyVStack(spacing: 10) {
-            ItemRowView(item: plain, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
-            ItemRowView(item: full, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
-            ItemRowView(item: overdue, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
-            ItemRowView(item: done, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
-            ItemRowView(item: laterThisYear, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
-            ItemRowView(item: nextYear, groupContext: .directUnscheduled(.list(inbox)), isDragEnabled: true, unscheduledItems: allItems)
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 10) {
+                ItemRowView(item: Item(title: "Task 1"), groupContext: .directUnscheduled(.list(List(title: "Inbox"))), isDragEnabled: true, unscheduledItems: [], commitDrop: {})
+                ItemRowView(item: Item(title: "Task 2"), groupContext: .directUnscheduled(.list(List(title: "Inbox"))), isDragEnabled: true, unscheduledItems: [], commitDrop: {})
+                ItemRowView(item: Item(title: "Task 3"), groupContext: .directUnscheduled(.list(List(title: "Inbox"))), isDragEnabled: true, unscheduledItems: [], commitDrop: {})
+            }
+            .padding()
         }
-        .padding()
+        .environment(itemDragState)
+        .modelContainer(for: [Space.self, Project.self, List.self, Item.self, TaskSection.self], inMemory: true)
     }
-    .modelContainer(container)
 }
 
 // MARK: - Item Row Drag Modifier
@@ -187,6 +154,7 @@ struct ItemRowDragModifier: ViewModifier {
     let groupContext: ItemGroupContext
     let isDragEnabled: Bool
     let unscheduledItems: [Item]
+    let commitDrop: () -> Void  // Called synchronously when drag ends (like sidebar's commitDrop)
     
     @Environment(ItemDragState.self) private var itemDragState
     
@@ -199,15 +167,22 @@ struct ItemRowDragModifier: ViewModifier {
                 onTap: {},
                 onDragBegan: { location in
                     guard isDragEnabled else { return }
+                    // Pre-set target to current position so gap opens in-place (no jump)
+                    if let idx = unscheduledItems.firstIndex(where: { $0.id == item.id }) {
+                        itemDragState.targetIndex = idx
+                    }
                     itemDragState.beginDrag(item: item, context: groupContext, at: location, height: 44)
                 },
                 onDragChanged: { location in
                     guard isDragEnabled, itemDragState.isDragging else { return }
-                    itemDragState.updateDragPosition(location, among: unscheduledItems)
+                    // Exclude the dragged item from the candidate list
+                    let others = unscheduledItems.filter { $0.id != item.id }
+                    itemDragState.updateDragPosition(location, among: others)
                 },
                 onDragEnded: {
                     guard isDragEnabled else { return }
-                    itemDragState.endDrag()
+                    // Commit the drop synchronously (like the sidebar's pattern)
+                    commitDrop()
                 }
             )
     }

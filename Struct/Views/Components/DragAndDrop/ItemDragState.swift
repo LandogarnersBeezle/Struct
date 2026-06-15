@@ -113,6 +113,16 @@ final class ItemDragState {
     /// The target index when the drag ended (preserved for reordering).
     private(set) var targetIndexAtEnd: Int = 0
     
+    /// The group context when the drag ended (preserved for reordering).
+    private(set) var groupContextAtEnd: ItemGroupContext? = nil
+    
+    /// `true` from the moment `endDrag()` fires until the next run loop turn.
+    /// Prevents tap gestures from firing immediately after a drag ends.
+    private(set) var justEndedDrag = false
+    
+    /// Current vertical scroll offset, updated during auto-scroll.
+    var scrollOffset: CGFloat = 0
+    
     // MARK: - Smooth Drag Visual State
     
     /// Current scale factor for the dragged row (1.0 = normal, 1.05 = lifted)
@@ -138,6 +148,9 @@ final class ItemDragState {
     ///   - point: Initial finger position in window coordinates
     ///   - height: The row height for the floating overlay
     func beginDrag(item: Item, context: ItemGroupContext, at point: CGPoint, height: CGFloat) {
+        // Full reset of all state
+        reset()
+        
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         
         draggingItem = item
@@ -204,10 +217,6 @@ final class ItemDragState {
     func endDrag() {
         longPressActive = false
         
-        // Preserve the dragged item and target index for reordering
-        itemAtEnd = draggingItem
-        targetIndexAtEnd = targetIndex
-        
         // First phase: quick scale down with bounce
         withAnimation(.spring(duration: 0.1, bounce: 0.3)) {
             dragScale = 0.95
@@ -217,8 +226,20 @@ final class ItemDragState {
         // Clear the floating item after a short delay to allow the drop animation
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             self?.floatingItem = nil
-            self?.draggingItem = nil
-            self?.groupContext = nil
+        }
+        
+        // Prevent taps from firing immediately after a drag ends
+        justEndedDrag = true
+        DispatchQueue.main.async { [weak self] in
+            self?.justEndedDrag = false
+        }
+        
+        // Clear dragging state after animations
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            draggingItem = nil
+            groupContext = nil
         }
     }
     
@@ -255,6 +276,43 @@ final class ItemDragState {
     func clearEndState() {
         itemAtEnd = nil
         targetIndexAtEnd = 0
+        groupContextAtEnd = nil
+    }
+    
+    /// Captures the drag state for reordering before clearing.
+    private(set) var capturedDragItem: Item? = nil
+    private(set) var capturedDragContext: ItemGroupContext? = nil
+    private(set) var capturedDragTargetIndex: Int = 0
+    
+    /// Set to true when drag ends and state is captured for reordering.
+    /// The parent view should observe this and call commitReorder(), which clears this flag.
+    private(set) var needsReorder = false
+    
+    /// Called from the gesture's onDragEnded. Captures state and triggers reorder.
+    func endDragAndCommit() {
+        guard draggingItem != nil, groupContext != nil else {
+            endDrag()
+            return
+        }
+        
+        // Capture state before clearing
+        capturedDragItem = draggingItem
+        capturedDragContext = groupContext
+        capturedDragTargetIndex = targetIndex
+        
+        // Signal that reorder is needed
+        needsReorder = true
+        
+        // End the drag (animates and clears draggingItem/groupContext)
+        endDrag()
+    }
+    
+    /// Called by the parent view to clear the needsReorder flag after committing.
+    func clearNeedsReorder() {
+        needsReorder = false
+        capturedDragItem = nil
+        capturedDragContext = nil
+        capturedDragTargetIndex = 0
     }
 }
 
