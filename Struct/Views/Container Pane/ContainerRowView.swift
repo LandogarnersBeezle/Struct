@@ -10,8 +10,8 @@ import SwiftUI
 // MARK: - ContainerRowButtonStyle
 
 /// A button style that gives every container row a subtle pressed-state
-/// indication — a faint background flash and a barely-perceptible scale-down —
-/// just before the navigation transition fires.
+/// indication — a faint background flash — just before the navigation
+/// transition fires.
 struct ContainerRowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -19,7 +19,6 @@ struct ContainerRowButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color.primary.opacity(configuration.isPressed ? 0.08 : 0))
             )
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

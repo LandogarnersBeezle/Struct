@@ -104,7 +104,9 @@ struct DraggableRowInteractionModifier: ViewModifier {
         return content
             .background(highlightBackground)
             .background(pressBackground)
-            .scaleEffect(isPressed ? 0.97 : 1)
+            // No scale-down on press — the row stays full size. Only a grey
+            // background flash indicates the touch. On long press (>1s) the
+            // floating drag system applies a scale-up (lift) effect.
             .animation(.easeOut(duration: 0.12), value: isPressed)
             .offset(x: offset)
             .overlay {
@@ -197,6 +199,16 @@ struct DraggableGestureOverlay: UIViewRepresentable {
         private var lastScrollTime: TimeInterval = 0
         private let scrollCooldownDuration: TimeInterval = 0.5
         
+        /// The time when the current press began (set by DraggableGestureHostView.touchesBegan).
+        var pressStartTime: TimeInterval = 0
+        
+        /// A pending, cancellable navigation work item scheduled ~0.3s after press start.
+        /// Created on touch-up (tap) and cancelled when the long press fires (drag).
+        private var pendingNavigationWork: DispatchWorkItem?
+        
+        /// Whether the long press gesture has already fired (drag has begun).
+        private var longPressDidFire: Bool = false
+        
         /// Check if we should allow long press based on recent scroll activity
         private func shouldAllowLongPress(for view: UIView?) -> Bool {
             // Find the scroll view in the responder chain
@@ -235,14 +247,34 @@ struct DraggableGestureOverlay: UIViewRepresentable {
         }
 
         @objc func handleTap(_ g: UITapGestureRecognizer) {
-            if g.state == .ended { parent.onTap() }
+            guard g.state == .ended else { return }
+            // The tap fires on touch-up. Schedule navigation with a ~0.3s delay
+            // from the original press start time so the grey background is visible.
+            let elapsed = CACurrentMediaTime() - pressStartTime
+            let remainingDelay = max(0, 0.3 - elapsed)
+            
+            // Cancel any previous pending work (shouldn't happen, but be safe)
+            pendingNavigationWork?.cancel()
+            
+            let work = DispatchWorkItem { [weak self] in
+                self?.parent.onTap()
+                // Reset isPressed after navigation fires
+                self?.parent.isPressed = false
+            }
+            pendingNavigationWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + remainingDelay, execute: work)
         }
 
         @objc func handleSwipe(_ g: HorizontalPanGestureRecognizer) {
             let t = g.translation(in: g.view)
             switch g.state {
             case .changed:                       parent.onSwipeChanged(t.x, t.y)
-            case .ended, .cancelled, .failed:    parent.onSwipeEnded(t.x)
+            case .ended, .cancelled, .failed:
+                // Cancel pending navigation and reset isPressed — swipe takes priority
+                pendingNavigationWork?.cancel()
+                pendingNavigationWork = nil
+                parent.onSwipeEnded(t.x)
+                parent.isPressed = false
             default: break
             }
         }
@@ -251,15 +283,21 @@ struct DraggableGestureOverlay: UIViewRepresentable {
             let loc = g.location(in: nil)
             switch g.state {
             case .began:
+                // Cancel any pending tap navigation — long press takes priority
+                pendingNavigationWork?.cancel()
+                pendingNavigationWork = nil
+                longPressDidFire = true
                 parent.onDragBegan(loc)
             case .changed:                       parent.onDragChanged(loc)
             case .ended, .cancelled, .failed:
+                longPressDidFire = false
                 parent.onDragEnded()
                 // Reset isPressed state when drag ends
                 parent.isPressed = false
             default: break
             }
         }
+        
     }
 }
 
@@ -448,12 +486,19 @@ final class DraggableGestureHostView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
+        // Record press start time so the Coordinator can calculate elapsed
+        // time for the 0.3s delayed navigation on tap.
+        coordinator?.pressStartTime = CACurrentMediaTime()
         coordinator?.parent.isPressed = true
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesEnded(touches, with: event)
-        coordinator?.parent.isPressed = false
+        // Do NOT reset isPressed here — the tap handler's DispatchWorkItem
+        // (scheduled ~0.3s after press start) is responsible for resetting
+        // it when navigation fires. This keeps the grey background visible
+        // during the delay. touchesCancelled below handles cancellation.
+        // Long press handler also resets isPressed when drag ends.
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {

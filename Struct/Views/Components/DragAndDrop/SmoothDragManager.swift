@@ -30,6 +30,7 @@ final class SmoothDragManager {
     /// Whether a drag operation is in progress
     var isDragging: Bool { draggingID != nil }
     
+    
     // MARK: - Animation Constants
     
     /// Scale factor during lift (1.05x = slightly enlarged)
