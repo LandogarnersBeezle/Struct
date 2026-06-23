@@ -92,7 +92,7 @@ struct SpaceSectionView: View {
         .background(selectedTarget == child.target ? Color.accentColor.opacity(0.12) : Color.clear)
         .cornerRadius(8)
         // Gesture pipeline handles tap and swipe-left
-        .draggableRowInteraction(
+        .swipeableRowInteraction(
             isHighlighted: swipeSelection.matches(child.swipeKind),
             accessibilityLabel: accessibilityLabelText,
             onTap:            { handleTap(child) },

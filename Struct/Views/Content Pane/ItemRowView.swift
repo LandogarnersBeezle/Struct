@@ -10,14 +10,6 @@ import SwiftData
 
 struct ItemRowView: View {
     let item: Item
-    let groupContext: ItemGroupContext
-    let isDragEnabled: Bool
-    let unscheduledItems: [Item]
-    let commitDrop: () -> Void  // Synchronous commit callback (like sidebar's commitDrop)
-    
-    @Environment(ItemDragState.self) private var itemDragState
-    
-    @State private var isGhostRow = false
     
     private let calendar = Calendar.current
     
@@ -54,10 +46,7 @@ struct ItemRowView: View {
     }
     
     var body: some View {
-        let isBeingDragged = itemDragState.draggingItem?.id == item.id
-        let isGhost = isBeingDragged
-        
-        return HStack(alignment: .top, spacing: 4) {
+        HStack(alignment: .top, spacing: 4) {
             // Completion indicator
             Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(item.isCompleted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
@@ -94,34 +83,7 @@ struct ItemRowView: View {
             
             Spacer(minLength: 0)
         }
-        .padding(.vertical, isGhost ? 0 : 2)
-        // Ghost row collapses to zero opacity and height to avoid pushing rows down
-        .opacity(isGhost ? 0 : 1.0)
-        .frame(height: isGhost ? 0 : nil)
-        .clipped()
-        // Report frame for drop target calculation
-        .background(
-            GeometryReader { geometry in
-                Color.clear
-                    .preference(
-                        key: ItemRowFrameKey.self,
-                        value: [item.id: geometry.frame(in: .named("ItemContentView"))]
-                    )
-            }
-        )
-        // Add drag interaction if enabled and item is unscheduled
-        .modifier(ItemRowDragModifier(
-            item: item,
-            groupContext: groupContext,
-            isDragEnabled: isDragEnabled && isUnscheduled(item: item),
-            unscheduledItems: unscheduledItems,
-            commitDrop: commitDrop
-        ))
-    }
-    
-    /// Check if item is unscheduled (no doDate)
-    private func isUnscheduled(item: Item) -> Bool {
-        item.doDate == nil
+        .padding(.vertical, 2)
     }
 }
 
@@ -130,60 +92,15 @@ struct ItemRowView: View {
 }
 
 struct PreviewWrapper: View {
-    @State private var itemDragState = ItemDragState()
-    
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 10) {
-                ItemRowView(item: Item(title: "Task 1"), groupContext: .directUnscheduled(.list(List(title: "Inbox"))), isDragEnabled: true, unscheduledItems: [], commitDrop: {})
-                ItemRowView(item: Item(title: "Task 2"), groupContext: .directUnscheduled(.list(List(title: "Inbox"))), isDragEnabled: true, unscheduledItems: [], commitDrop: {})
-                ItemRowView(item: Item(title: "Task 3"), groupContext: .directUnscheduled(.list(List(title: "Inbox"))), isDragEnabled: true, unscheduledItems: [], commitDrop: {})
+                ItemRowView(item: Item(title: "Task 1"))
+                ItemRowView(item: Item(title: "Task 2"))
+                ItemRowView(item: Item(title: "Task 3"))
             }
             .padding()
         }
-        .environment(itemDragState)
         .modelContainer(for: [Space.self, Project.self, List.self, Item.self, TaskSection.self], inMemory: true)
-    }
-}
-
-// MARK: - Item Row Drag Modifier
-
-/// View modifier that adds long-press drag interaction to item rows.
-struct ItemRowDragModifier: ViewModifier {
-    let item: Item
-    let groupContext: ItemGroupContext
-    let isDragEnabled: Bool
-    let unscheduledItems: [Item]
-    let commitDrop: () -> Void  // Called synchronously when drag ends (like sidebar's commitDrop)
-    
-    @Environment(ItemDragState.self) private var itemDragState
-    
-    func body(content: Content) -> some View {
-        content
-            .draggableRowInteraction(
-                supportsSwipe: false,
-                accessibilityLabel: item.title,
-                accessibilityHint: "Long press to reorder within group",
-                onTap: {},
-                onDragBegan: { location in
-                    guard isDragEnabled else { return }
-                    // Pre-set target to current position so gap opens in-place (no jump)
-                    if let idx = unscheduledItems.firstIndex(where: { $0.id == item.id }) {
-                        itemDragState.targetIndex = idx
-                    }
-                    itemDragState.beginDrag(item: item, context: groupContext, at: location, height: 44)
-                },
-                onDragChanged: { location in
-                    guard isDragEnabled, itemDragState.isDragging else { return }
-                    // Exclude the dragged item from the candidate list
-                    let others = unscheduledItems.filter { $0.id != item.id }
-                    itemDragState.updateDragPosition(location, among: others)
-                },
-                onDragEnded: {
-                    guard isDragEnabled else { return }
-                    // Commit the drop synchronously (like the sidebar's pattern)
-                    commitDrop()
-                }
-            )
     }
 }

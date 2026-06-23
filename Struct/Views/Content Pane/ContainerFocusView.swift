@@ -173,8 +173,7 @@ struct ContainerFocusView: View {
                 } else {
                     ContainerFocusListView(
                         target: target,
-                        viewModel: viewModel,
-                        modelContext: modelContext
+                        viewModel: viewModel
                     )
                 }
             case .list, .project:
@@ -187,8 +186,7 @@ struct ContainerFocusView: View {
                 } else {
                     ContainerFocusListView(
                         target: target,
-                        viewModel: viewModel,
-                        modelContext: modelContext
+                        viewModel: viewModel
                     )
                 }
             }

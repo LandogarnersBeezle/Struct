@@ -9,22 +9,6 @@ import SwiftUI
 import Combine
 import SwiftData
 
-// MARK: - Section Position Tracking
-
-/// Information about a nested section header's position for tracking which section is at the boundary.
-struct SectionPositionInfo: Equatable {
-    let childContainerID: ContainerChild.ID
-    let title: String
-    let yPosition: CGFloat
-}
-
-struct SectionPositionPreferenceKey: PreferenceKey {
-    static var defaultValue: [SectionPositionInfo] = []
-    static func reduce(value: inout [SectionPositionInfo], nextValue: () -> [SectionPositionInfo]) {
-        value.append(contentsOf: nextValue())
-    }
-}
-
 /// ViewModel for ContainerFocusView that manages filter state and logic.
 @MainActor
 class ContainerFocusViewModel: ObservableObject {

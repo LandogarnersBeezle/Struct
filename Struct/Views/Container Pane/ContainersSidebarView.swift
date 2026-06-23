@@ -169,7 +169,7 @@ struct ContainersSidebarView: View {
         VStack(alignment: .leading, spacing: 0) {
             spaceRowContent(for: space)
                 .padding(.bottom, 10)
-                .draggableRowInteraction(
+                .swipeableRowInteraction(
                     isHighlighted: swipeSelection.matches(.space(space)),
                     accessibilityLabel: spaceAccessibilityLabel,
                     onTap: { handleSpaceTap(space) },
