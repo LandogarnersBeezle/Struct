@@ -33,25 +33,19 @@ struct ContainerFocusListView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                // Direct items - Unscheduled
+                // Direct items - Unscheduled first, then Scheduled
                 if !groupedContent.directItems.unscheduled.isEmpty {
-                    Section(header: sectionHeader("Unscheduled")) {
-                        ForEach(groupedContent.directItems.unscheduled) { item in
-                            ItemRowView(item: item)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                        }
+                    ForEach(groupedContent.directItems.unscheduled) { item in
+                        ItemRowView(item: item)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                     }
                 }
-
-                // Direct items - Scheduled
                 if !groupedContent.directItems.scheduled.isEmpty {
-                    Section(header: sectionHeader("Scheduled")) {
-                        ForEach(groupedContent.directItems.scheduled) { item in
-                            ItemRowView(item: item)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                        }
+                    ForEach(groupedContent.directItems.scheduled) { item in
+                        ItemRowView(item: item)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                     }
                 }
 
@@ -81,7 +75,7 @@ struct ContainerFocusListView: View {
                 ForEach(childContainerGroups) { childGroup in
                     Section(header: childContainerHeader(childGroup)) {
                         if viewModel.isChildContainerExpanded(childGroup.child) {
-                            // Child container's direct items - Unscheduled
+                            // Child container's direct items - Unscheduled first, then Scheduled
                             if !childGroup.directItems.unscheduled.isEmpty {
                                 ForEach(childGroup.directItems.unscheduled) { item in
                                     ItemRowView(item: item)
@@ -89,8 +83,6 @@ struct ContainerFocusListView: View {
                                         .padding(.vertical, 8)
                                 }
                             }
-
-                            // Child container's direct items - Scheduled
                             if !childGroup.directItems.scheduled.isEmpty {
                                 ForEach(childGroup.directItems.scheduled) { item in
                                     ItemRowView(item: item)
@@ -148,6 +140,7 @@ struct ContainerFocusListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
+            .background(Color(.systemBackground))
             .background(Color.secondary.opacity(0.04))
             .cornerRadius(6)
         } else {
@@ -155,6 +148,7 @@ struct ContainerFocusListView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
+                .background(Color(.systemBackground))
                 .background(Color.secondary.opacity(0.06))
                 .cornerRadius(6)
         }
@@ -177,6 +171,7 @@ struct ContainerFocusListView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .background(Color(.systemBackground))
         .background(Color.secondary.opacity(0.04))
         .cornerRadius(6)
     }
