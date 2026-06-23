@@ -227,20 +227,6 @@ enum Containers {
         return (lists + projects).sorted { $0.sortIndex < $1.sortIndex }
     }
 
-    // MARK: Repack
-
-    /// Normalises `sortIndex` to contiguous 0-based integers in the order
-    /// the children are supplied.  Call this after every drop commit and
-    /// after `ensureUnifiedSortOrder`.
-    static func repack(_ children: [ContainerChild]) {
-        for (i, child) in children.enumerated() {
-            switch child {
-            case .list(let l):    l.sortIndex = i
-            case .project(let p): p.sortIndex = i
-            }
-        }
-    }
-
     // MARK: Migration
 
     /// Migrates a space whose lists and projects still occupy separate

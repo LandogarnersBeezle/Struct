@@ -524,8 +524,10 @@ final class HorizontalPanGestureRecognizer: UIPanGestureRecognizer {
         super.touchesMoved(touches, with: event)
         guard state == .possible else { return }
 
-        // If the long press is active or has already begun, fail the swipe
-        if let lp = longPressGuard, lp.state == .began || lp.state == .changed || lp.state == .possible {
+        // If the long press has already begun/fired, fail the swipe
+        // The .possible state is the default resting state — do NOT fail the
+        // swipe there, otherwise the gesture never gets a chance to start.
+        if let lp = longPressGuard, lp.state == .began || lp.state == .changed {
             state = .failed
             return
         }

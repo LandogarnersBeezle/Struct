@@ -12,15 +12,9 @@ import SwiftData
 
 /// Layout host for the leading sidebar pane.
 ///
-/// Owns the shared SidebarDragState and injects it into the view hierarchy
-/// via .environment.  Collects per-row frames through RowFrameKey and
-/// routes them into drag.rowFrames so drop-target computation (which runs
-/// entirely inside SidebarDragState) has up-to-date geometry.
-///
-/// The floating drag card and the dashed drop-zone gap together produce the
-/// smooth "push-aside" animation: the gap is rendered by SpaceSectionView
-/// in the normal layout flow (so other rows spring apart naturally), while
-/// the card floats above everything in a ZStack overlay.
+/// Displays the inbox row at the top, followed by a scrollable list of spaces
+/// each containing their lists and projects. Supports tap-to-select and
+/// swipe-to-delete. Drag-and-drop reordering has been removed.
 struct ContainersSidebarView: View {
 
     let inbox: List?
@@ -40,14 +34,9 @@ struct ContainersSidebarView: View {
 
     @State private var saveError: DataError?
 
-    // MARK: Drag state
+    // MARK: Swipe selection
 
-    @State private var drag = SidebarDragState()
     @State private var swipeSelection = SidebarSwipeSelection()
-    
-    // MARK: Smooth Drag Manager (Things 3-like transitions)
-    
-    @State private var smoothDragManager = SmoothDragManager()
 
     // MARK: Creation card state
 
@@ -59,10 +48,6 @@ struct ContainersSidebarView: View {
     private var deletionService: ContainerDeletionService {
         ContainerDeletionService(modelContext: modelContext)
     }
-
-    // MARK: Layout metrics
-
-    private let layoutMetrics = LayoutMetrics.sidebar
 
     // MARK: Body
 
@@ -76,11 +61,7 @@ struct ContainersSidebarView: View {
                 }
                 Spacer(minLength: 10)
                 // Scroll content below inbox
-                ZStack(alignment: .top) {
-                    scrollContent
-                    floatingCardOverlay
-                    spaceFloatingCardOverlay
-                }
+                scrollContent
             }
             // Bottom-right button overlay (controlled by showActionButton parameter)
             // On iPad, showActionButton is false because the "+ Container" button is in the detail view
@@ -147,22 +128,7 @@ struct ContainersSidebarView: View {
                 .zIndex(999)
             }
         }
-        .environment(drag)
         .environment(swipeSelection)
-        .environment(smoothDragManager)
-    }
-
-    // MARK: - Space slots
-
-    private var spaceSlots: [SpaceSlotItem] {
-        var result = spaces.map(SpaceSlotItem.space)
-        guard drag.isDraggingSpace else { return result }
-        let ghostPos = spaces.firstIndex { drag.draggingSpace?.persistentModelID == $0.persistentModelID }
-        let adjusted = ghostPos.map { drag.spaceTargetIndex > $0 ? drag.spaceTargetIndex + 1
-                                                                  : drag.spaceTargetIndex }
-                       ?? drag.spaceTargetIndex
-        result.insert(.gap, at: max(0, min(adjusted, result.count)))
-        return result
     }
 
     // MARK: - Scroll content
@@ -170,107 +136,28 @@ struct ContainersSidebarView: View {
     private var scrollContent: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                ForEach(spaceSlots) { slot in
-                    switch slot {
-                    case .space(let space):
-                        let isGhost = drag.draggingSpace?.persistentModelID == space.persistentModelID
-                        Section {
-                            SpaceSectionView(space: space, allSpaces: spaces, selectedTarget: selectedTarget, onSelect: onSelect)
-                                .padding(.horizontal, 5)
-                                .padding(.bottom, isGhost ? 0 : 8)
-                        } header: {
-                            spaceHeader(for: space)
-                        }
-                    case .gap:
-                        spaceDropGap
+                ForEach(spaces, id: \.persistentModelID) { space in
+                    Section {
+                        SpaceSectionView(space: space, selectedTarget: selectedTarget, onSelect: onSelect)
+                            .padding(.horizontal, 5)
+                            .padding(.bottom, 8)
+                    } header: {
+                        spaceHeader(for: space)
                     }
                 }
             }
-            .animation(.spring(duration: layoutMetrics.dragSpringDuration, bounce: layoutMetrics.dragSpringBounce), value: spaceSlots)
         }
         .coordinateSpace(.named("sidebar"))
-        .overlay {
-            AutoScrollOverlay(
-                dragState: drag,
-                contentHeight: { estimateContentHeight() }
-            )
-        }
-        .overlay {
-            GeometryReader { geo in
-                Color.clear
-                    .preference(key: SidebarOriginKey.self,
-                               value: geo.frame(in: .global).origin)
-            }
-        }
-        .scrollDisabled(drag.longPressActive || drag.isDragging || drag.isDraggingSpace)
-        .onPreferenceChange(RowFrameKey.self)         { drag.rowFrames = $0 }
-        .onPreferenceChange(SpaceHeaderFrameKey.self) { drag.spaceHeaderFrames = $0 }
-        .onPreferenceChange(SidebarOriginKey.self)    { drag.sidebarOriginInWindow = $0 }
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: 0)
         }
         .errorAlert($saveError)
-        .onChange(of: drag.isDragging)      { _, on in if on { swipeSelection.clear() } }
-        .onChange(of: drag.isDraggingSpace) { _, on in if on { swipeSelection.clear() } }
-    }
-
-    // MARK: - Space drop gap
-
-    private var spaceDropGap: some View {
-        RoundedRectangle(cornerRadius: layoutMetrics.dropGapCornerRadius, style: .continuous)
-            .fill(Color.green.opacity(0.15))
-            .frame(height: drag.spaceCardHeight)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .transition(.asymmetric(
-                insertion: .scale(scale: 0.85).combined(with: .opacity),
-                removal:   .opacity.animation(.easeOut(duration: 0.1))
-            ))
-    }
-
-    // MARK: - Smooth Drag Floating Row (replaces old floating card)
-
-    @ViewBuilder
-    private var floatingCardOverlay: some View {
-        if smoothDragManager.isDragging,
-           let draggingID = smoothDragManager.draggingID,
-           let child = findChild(by: draggingID) {
-            // Use GeometryReader to position in sidebar coordinate space
-            // Convert window coordinates to sidebar coordinates
-            GeometryReader { proxy in
-                SmoothDragFloatingRow(
-                    child: child,
-                    position: CGPoint(
-                        x: proxy.size.width / 2,
-                        y: smoothDragManager.fingerPosition.y - drag.sidebarOriginInWindow.y
-                    ),
-                    scale: smoothDragManager.dragScale,
-                    opacity: smoothDragManager.dragOpacity,
-                    isVisible: true
-                )
-            }
-            .allowsHitTesting(false)
-        }
-    }
-    
-    // MARK: - Helper to find child by ID
-    
-    private func findChild(by id: ContainerChild.ID) -> ContainerChild? {
-        for space in spaces {
-            let children = Containers.children(of: space)
-            if let child = children.first(where: { $0.id == id }) {
-                return child
-            }
-        }
-        return nil
     }
 
     // MARK: - Space header
 
     @ViewBuilder
     private func spaceHeader(for space: Space) -> some View {
-        let isGhost = drag.draggingSpace?.persistentModelID == space.persistentModelID
-        let isCurrentlyDraggingSpace = drag.isDraggingSpace && drag.draggingSpace?.persistentModelID == space.persistentModelID
         let isSelected = selectedTarget == .space(space)
         let spaceOpenCount = space.items.filter { !$0.isCompleted }.count
         let spaceAccessibilityLabel = spaceOpenCount > 0
@@ -279,43 +166,21 @@ struct ContainersSidebarView: View {
             : String(format: NSLocalizedString("%@, Space, no open tasks", comment: "Space accessibility label"),
                      space.name)
 
-        // Determine visual state for smooth drag transition
-        let currentScale = isCurrentlyDraggingSpace ? drag.dragScale : 1.0
-        let currentOpacity = isGhost ? 0 : (isCurrentlyDraggingSpace ? drag.dragOpacity : 1.0)
-
         VStack(alignment: .leading, spacing: 0) {
-            // Divider()
             spaceRowContent(for: space)
                 .padding(.bottom, 10)
                 .draggableRowInteraction(
                     isHighlighted: swipeSelection.matches(.space(space)),
                     accessibilityLabel: spaceAccessibilityLabel,
                     onTap: { handleSpaceTap(space) },
-                    onSwipeTriggered: { swipeSelection.toggle(.space(space)) },
-                    onDragBegan: { handleSpaceDragBegan(space, at: $0) },
-                    onDragChanged: { handleSpaceDragChanged(at: $0) },
-                    onDragEnded: { handleSpaceDragEnded() }
+                    onSwipeTriggered: { swipeSelection.toggle(.space(space)) }
                 )
-        }
-        .background {
-            GeometryReader { geo in
-                Color.clear.preference(key: SpaceHeaderFrameKey.self,
-                                       value: [space.persistentModelID: geo.frame(in: .named("sidebar"))])
-            }
         }
         // Opaque background to prevent content from showing through when sticky
         .background(Color(.systemBackground))
         // Selection highlight on top of opaque background
         .overlay(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .cornerRadius(8)
-        // Apply smooth drag transition
-        .scaleEffect(currentScale)
-        .opacity(currentOpacity)
-        // Ghost space header collapses to zero height to let other spaces slide up
-        .frame(height: isGhost ? 0 : nil)
-        .clipped()
-        .allowsHitTesting(!isGhost)
-        .animation(.spring(duration: layoutMetrics.dragSpringDuration, bounce: 0), value: isGhost)
     }
 
     @ViewBuilder
@@ -341,74 +206,12 @@ struct ContainersSidebarView: View {
         .contentShape(Rectangle())
     }
 
-    // MARK: - Space floating card
-
-    @ViewBuilder
-    private var spaceFloatingCardOverlay: some View {
-        if let space = drag.spaceFloatingCardSpace {
-            GeometryReader { proxy in
-                SpaceFloatingCard(space: space, layoutMetrics: layoutMetrics)
-                    .position(x: proxy.size.width / 2, y: drag.location.y)
-                    .scaleEffect(drag.isDraggingSpace ? 1.0 : 0.9)
-                    .opacity(drag.isDraggingSpace ? layoutMetrics.cardOpacity : 0)
-            }
-            .allowsHitTesting(false)
-            .animation(.spring(duration: 0.2, bounce: 0.3), value: drag.spaceFloatingCardSpace != nil)
-            .zIndex(999)
-        }
-    }
-
     // MARK: - Space gesture callbacks
 
     private func handleSpaceTap(_ space: Space) {
-        if !drag.isDraggingSpace, !drag.justEndedDrag, !swipeSelection.justTriggered {
+        if !swipeSelection.justTriggered {
             swipeSelection.clear()
             onSelect(.space(space))
-        }
-    }
-
-    private func handleSpaceDragBegan(_ space: Space, at windowLoc: CGPoint) {
-        drag.longPressActive = true
-        let loc = drag.toSidebar(windowLoc)
-        if let idx = spaces.firstIndex(where: { $0.persistentModelID == space.persistentModelID }) {
-            drag.spaceTargetIndex = idx
-        }
-        let h = drag.spaceHeaderFrames[space.persistentModelID]?.height ?? layoutMetrics.headerHeight
-        drag.beginSpaceDrag(space: space, at: loc, headerHeight: h)
-        // Note: SmoothDragManager is designed for ContainerChild IDs, not Space IDs
-        // For space dragging, we continue using the existing drag.animateLift()
-        drag.animateLift()
-    }
-
-    private func handleSpaceDragChanged(at windowLoc: CGPoint) {
-        guard drag.isDraggingSpace else { return }
-        drag.location = drag.toSidebar(windowLoc)
-        drag.updateSpaceTarget(in: spaces)
-    }
-
-    private func handleSpaceDragEnded() {
-        drag.longPressActive = false
-        guard drag.isDraggingSpace else { return }
-        // Trigger smooth drop animation before committing
-        drag.animateDrop()
-        commitSpaceDrop()
-    }
-
-    // MARK: - Commit space drop
-
-    private func commitSpaceDrop() {
-        defer { drag.endSpaceDrag() }
-        guard let dragging = drag.draggingSpace else { return }
-        var ordered = spaces.filter { dragging.persistentModelID != $0.persistentModelID }
-        let idx = max(0, min(drag.spaceTargetIndex, ordered.count))
-        ordered.insert(dragging, at: idx)
-        for (i, space) in ordered.enumerated() { space.sortIndex = i }
-        do {
-            try modelContext.saveOrThrow()
-        } catch let error as DataError {
-            saveError = error
-        } catch {
-            saveError = .saveFailed(error)
         }
     }
 
@@ -464,15 +267,5 @@ struct ContainersSidebarView: View {
                 hidePlusButton = false
             }
         }
-    }
-
-    // MARK: - Content Height Estimation
-
-    private func estimateContentHeight() -> CGFloat {
-        layoutMetrics.estimateContentHeight(
-            rowCount: spaces.reduce(0) { $0 + Containers.children(of: $1).count },
-            headerCount: spaces.count,
-            hasInbox: inbox != nil
-        )
     }
 }
