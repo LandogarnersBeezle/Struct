@@ -137,13 +137,6 @@ struct SwipeableGestureOverlay: UIViewRepresentable {
         var parent: SwipeableGestureOverlay
         init(_ parent: SwipeableGestureOverlay) { self.parent = parent }
 
-        /// The time when the current press began (set by SwipeableGestureHostView.touchesBegan).
-        var pressStartTime: TimeInterval = 0
-
-        /// A pending, cancellable navigation work item scheduled ~0.3s after press start.
-        /// Created on touch-up (tap).
-        private var pendingNavigationWork: DispatchWorkItem?
-
         func gestureRecognizer(_ g: UIGestureRecognizer,
                                 shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
             return true
@@ -156,21 +149,8 @@ struct SwipeableGestureOverlay: UIViewRepresentable {
 
         @objc func handleTap(_ g: UITapGestureRecognizer) {
             guard g.state == .ended else { return }
-            // The tap fires on touch-up. Schedule navigation with a ~0.3s delay
-            // from the original press start time so the grey background is visible.
-            let elapsed = CACurrentMediaTime() - pressStartTime
-            let remainingDelay = max(0, 0.3 - elapsed)
-
-            // Cancel any previous pending work (shouldn't happen, but be safe)
-            pendingNavigationWork?.cancel()
-
-            let work = DispatchWorkItem { [weak self] in
-                self?.parent.onTap()
-                // Reset isPressed after navigation fires
-                self?.parent.isPressed = false
-            }
-            pendingNavigationWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + remainingDelay, execute: work)
+            parent.onTap()
+            parent.isPressed = false
         }
 
         @objc func handleSwipe(_ g: HorizontalPanGestureRecognizer) {
@@ -178,9 +158,6 @@ struct SwipeableGestureOverlay: UIViewRepresentable {
             switch g.state {
             case .changed:                       parent.onSwipeChanged(t.x, t.y)
             case .ended, .cancelled, .failed:
-                // Cancel pending navigation and reset isPressed — swipe takes priority
-                pendingNavigationWork?.cancel()
-                pendingNavigationWork = nil
                 parent.onSwipeEnded(t.x)
                 parent.isPressed = false
             default: break
@@ -261,18 +238,16 @@ final class SwipeableGestureHostView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
-        // Record press start time so the Coordinator can calculate elapsed
-        // time for the 0.3s delayed navigation on tap.
-        coordinator?.pressStartTime = CACurrentMediaTime()
         coordinator?.parent.isPressed = true
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesEnded(touches, with: event)
-        // Do NOT reset isPressed here — the tap handler's DispatchWorkItem
-        // (scheduled ~0.3s after press start) is responsible for resetting
-        // it when navigation fires. This keeps the grey background visible
-        // during the delay. touchesCancelled below handles cancellation.
+        // Always reset isPressed on finger lift. On a quick tap the tap gesture
+        // fires and also resets it (harmless duplicate). On a long press where
+        // the pan gesture never fails (so tap.require(toFail:) blocks the tap
+        // recogniser), this is the only point where the highlight gets cleared.
+        coordinator?.parent.isPressed = false
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
