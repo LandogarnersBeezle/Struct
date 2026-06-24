@@ -8,10 +8,27 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - Child Frame Preference Key
+
+/// Collects the frame of each rendered child in the space VStack's coordinate
+/// space, keyed by the child's ID.
+struct ChildFrame: Equatable {
+    let id:   ContainerChild.ID
+    let rect: CGRect
+}
+
+struct ChildFramePreferenceKey: PreferenceKey {
+    static let defaultValue: [ChildFrame] = []
+
+    static func reduce(value: inout [ChildFrame], nextValue: () -> [ChildFrame]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
 // MARK: - SpaceSectionView
 
-/// Renders one Space's children (lists and projects) with tap-to-select and
-/// swipe-to-delete. Drag-and-drop reordering functionality has been removed.
+/// Renders one Space's children (lists and projects) with tap-to-select,
+/// swipe-to-delete, and drag-to-reorder (within or across spaces).
 struct SpaceSectionView: View {
 
     let space:     Space
@@ -55,14 +72,51 @@ struct SpaceSectionView: View {
         return (ls + ps).sorted { $0.sortIndex < $1.sortIndex }
     }
 
+    // MARK: Child frames
+
+    /// Rendered child frames in the space VStack's coordinate space, populated
+    /// via `ChildFramePreferenceKey`.
+    @State private var childFrames: [ContainerChild.ID: CGRect] = [:]
+
+    /// The coordinate space name for this space's VStack.
+    private var spaceCoordName: String {
+        "spaceVStack_\(space.persistentModelID)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(children, id: \.id) { child in
+            ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
                 rowView(for: child)
+                    // Track child frame for insertion‑index calculation
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear
+                                .preference(
+                                    key: ChildFramePreferenceKey.self,
+                                    value: [ChildFrame(
+                                        id: child.id,
+                                        rect: geo.frame(in: .named(spaceCoordName))
+                                    )]
+                                )
+                        }
+                    )
             }
         }
         .padding(.leading, 8)
         .errorAlert($saveError)
+        // Receive frame updates
+        .onPreferenceChange(ChildFramePreferenceKey.self) { frames in
+            for frame in frames {
+                childFrames[frame.id] = frame.rect
+            }
+        }
+        // Drop target for the entire space's children area
+        .coordinateSpace(.named(spaceCoordName))
+        .dropDestination(for: ContainerDragData.self) { items, location in
+            handleDrop(items, at: location)
+        } isTargeted: { targeted in
+            // Currently unused; we rely on the natural row-shifting of ForEach
+        }
     }
 
     // MARK: - Row view
@@ -98,7 +152,76 @@ struct SpaceSectionView: View {
             onTap:            { handleTap(child) },
             onSwipeTriggered: { swipeSelection.toggle(child.swipeKind) }
         )
+        // Drag source — long‑press lifts the actual row
+        .draggable(ContainerDragData(
+            containerID:   child.persistentModelID,
+            isList:        child.isList,
+            sourceSpaceID: space.persistentModelID
+        ))
         .padding(.bottom, 8)
+    }
+
+    // MARK: - Drop handling
+
+    private func handleDrop(_ items: [ContainerDragData], at location: CGPoint) -> Bool {
+        guard let dragData = items.first else { return false }
+
+        let insertionIndex = insertionIndex(at: location)
+
+        // Look up the model from the context
+        let modelID = dragData.containerID
+        let child: ContainerChild? = {
+            if dragData.isList,
+               let list = context.model(for: modelID) as? List {
+                return .list(list)
+            } else if let project = context.model(for: modelID) as? Project {
+                return .project(project)
+            }
+            return nil
+        }()
+
+        guard let child else { return false }
+
+        // Animate the row into its new position with a smooth spring.
+        // The @Query re-fetches after context.save() inside moveChild,
+        // and withAnimation captures that diff for the ForEach transition.
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            Containers.moveChild(child, to: space, at: insertionIndex, context: context)
+        }
+
+        return true
+    }
+
+    /// Calculates the insertion index for a drop at `location.y` within this
+    /// space's children VStack coordinate space.
+    ///
+    /// Uses the collected child frame rects for precise positioning. Falls
+    /// back to row-height estimation when frames aren't available (e.g. empty
+    /// space or first frame(s) not yet rendered).
+    private func insertionIndex(at location: CGPoint) -> Int {
+        let sorted = children
+        guard !sorted.isEmpty else { return 0 }
+
+        // Try precise frame-based positioning first
+        // Collect midY for each child in visual order
+        let midYs: [CGFloat] = sorted.compactMap { child in
+            guard let rect = childFrames[child.id] else { return nil }
+            return rect.midY
+        }
+
+        if midYs.count == sorted.count {
+            for (i, midY) in midYs.enumerated() {
+                if location.y < midY {
+                    return i
+                }
+            }
+            return midYs.count
+        }
+
+        // Fallback: estimate from row height when some frames are missing
+        let rowHeight: CGFloat = 44
+        let estimatedIndex = Int(floor(location.y / rowHeight))
+        return min(max(estimatedIndex, 0), sorted.count)
     }
 
     // MARK: - Gesture callbacks

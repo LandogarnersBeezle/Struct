@@ -190,6 +190,22 @@ extension ContainerChild {
         }
     }
 
+    /// Persistent identifier for lookups.
+    var persistentModelID: PersistentIdentifier {
+        switch self {
+        case .list(let l):    return l.persistentModelID
+        case .project(let p): return p.persistentModelID
+        }
+    }
+
+    /// Whether this child is a List (as opposed to a Project).
+    var isList: Bool {
+        switch self {
+        case .list:    return true
+        case .project: return false
+        }
+    }
+
     /// Swipe-selection identifier for this child — used by sidebar rows to
     /// drive `SidebarSwipeSelection.matches` / `.toggle`.
     var swipeKind: SwipeableContainerKind {
@@ -225,6 +241,51 @@ enum Containers {
         let lists    = space.lists.filter { $0.kind != .inbox }.map(ContainerChild.list)
         let projects = space.projects.map(ContainerChild.project)
         return (lists + projects).sorted { $0.sortIndex < $1.sortIndex }
+    }
+
+    // MARK: Move child
+
+    /// Moves a container child to the specified space at the specified index.
+    /// If the source and target spaces differ, the child is re-parented.
+    /// Both spaces are re-indexed afterward to ensure sequential sort indices.
+    static func moveChild(_ child: ContainerChild, to targetSpace: Space, at index: Int, context: ModelContext) {
+        // 1. Get the source space before modifying the child
+        let sourceSpace: Space?
+        switch child {
+        case .list(let l):
+            sourceSpace = l.space
+            l.space = targetSpace
+        case .project(let p):
+            sourceSpace = p.space
+            p.space = targetSpace
+        }
+
+        // 2. Collect target space children (child is now included)
+        var targetChildren = Containers.children(of: targetSpace)
+
+        // 3. Remove child from its current position, then insert at desired index
+        guard let currentIdx = targetChildren.firstIndex(where: { $0.id == child.id }) else {
+            try? context.save()
+            return
+        }
+        let moved = targetChildren.remove(at: currentIdx)
+        let clamped = min(index, targetChildren.count)
+        targetChildren.insert(moved, at: clamped)
+
+        // 4. Re-number sequentially
+        for (i, c) in targetChildren.enumerated() {
+            switch c {
+            case .list(let l):    l.sortIndex = i
+            case .project(let p): p.sortIndex = i
+            }
+        }
+
+        // 5. Re-index source space if different
+        if let source = sourceSpace, source.persistentModelID != targetSpace.persistentModelID {
+            Containers.ensureUnifiedSortOrder(for: source)
+        }
+
+        try? context.save()
     }
 
     // MARK: Migration
