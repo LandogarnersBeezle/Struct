@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 // MARK: - Child Frame Preference Key
 
@@ -22,6 +23,126 @@ struct ChildFramePreferenceKey: PreferenceKey {
 
     static func reduce(value: inout [ChildFrame], nextValue: () -> [ChildFrame]) {
         value.append(contentsOf: nextValue())
+    }
+}
+
+// MARK: - Insertion Line Drop Delegate
+
+/// Lightweight `DropDelegate` that tracks where the insertion‑line should
+/// appear.  It updates `insertionLineY` based on the finger location and
+/// loads `ContainerDragData` on drop.
+private struct InsertionLineDropDelegate: DropDelegate {
+
+    let children:    [ContainerChild]
+    let childFrames: [ContainerChild.ID: CGRect]
+
+    /// The Y position (in the VStack's coordinate space) where the green
+    /// insertion line should be drawn, or `nil` when the drag is inactive.
+    @Binding var insertionLineY: CGFloat?
+
+    /// Called on drop with the decoded drag data.
+    let performDropHandler: (ContainerDragData) -> Void
+
+    // MARK: Drop lifecycle
+
+    func dropEntered(info: DropInfo) {
+        updateLineY(from: info.location)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        updateLineY(from: info.location)
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.15)) {
+                insertionLineY = nil
+            }
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        // Do NOT clear insertionLineY here — it's still needed by
+        // the drop handler to compute the insertion index.  The
+        // handler will clear it after the move.
+        guard let provider = info.itemProviders(for: [.containerDrag]).first else {
+            DispatchQueue.main.async { insertionLineY = nil }
+            return false
+        }
+
+        provider.loadDataRepresentation(forTypeIdentifier: UTType.containerDrag.identifier) { data, error in
+            guard let data,
+                  let dragData = try? JSONDecoder().decode(ContainerDragData.self, from: data)
+            else {
+                DispatchQueue.main.async { self.insertionLineY = nil }
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.performDropHandler(dragData)
+            }
+        }
+
+        return true
+    }
+
+    // MARK: Line position
+
+    /// Computes the insertion index from the finger location, then derives
+    /// the Y position for the green line.
+    private func updateLineY(from location: CGPoint) {
+        let index = insertionIndex(at: location)
+        let yPos: CGFloat = {
+            let sorted = children
+            guard !sorted.isEmpty else { return 0 }
+
+            // Index is past the last child → line sits at the bottom of the last row
+            if index >= sorted.count, let last = childFrames[sorted.last!.id] {
+                return last.maxY
+            }
+
+            // Insert before child at `index` → line sits at that child's top edge
+            if let rect = childFrames[sorted[index].id] {
+                return rect.minY
+            }
+
+            // Fallback: estimate
+            return CGFloat(index) * 52
+        }()
+
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.12)) {
+                insertionLineY = yPos
+            }
+        }
+    }
+
+    // MARK: Index calculation
+
+    private func insertionIndex(at location: CGPoint) -> Int {
+        let sorted = children
+        guard !sorted.isEmpty else { return 0 }
+
+        // Use the bottom edge of each row as the boundary between zones
+        // (natural hysteresis — finger must leave a row to advance).
+        let bottomEdges: [CGFloat] = sorted.compactMap { child in
+            guard let rect = childFrames[child.id] else { return nil }
+            return rect.maxY
+        }
+
+        if bottomEdges.count == sorted.count {
+            for (i, maxY) in bottomEdges.enumerated() {
+                if location.y < maxY {
+                    return i
+                }
+            }
+            return bottomEdges.count
+        }
+
+        let rowHeight: CGFloat = 52
+        let estimatedIndex = Int(floor(location.y / rowHeight))
+        return min(max(estimatedIndex, 0), sorted.count)
     }
 }
 
@@ -42,6 +163,12 @@ struct SpaceSectionView: View {
     // MARK: Error state
 
     @State private var saveError: DataError?
+
+    // MARK: Insertion line visual feedback
+
+    /// The Y position (in `spaceCoordName` coordinate space) where the green
+    /// insertion line is drawn.  `nil` means no drag is active.
+    @State private var insertionLineY: CGFloat? = nil
 
     @Query private var lists:    [List]
     @Query private var projects: [Project]
@@ -83,11 +210,13 @@ struct SpaceSectionView: View {
         "spaceVStack_\(space.persistentModelID)"
     }
 
+    // MARK: Body
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
                 rowView(for: child)
-                    // Track child frame for insertion‑index calculation
+                    // Track child frame for insertion‑line calculation
                     .background(
                         GeometryReader { geo in
                             Color.clear
@@ -110,13 +239,31 @@ struct SpaceSectionView: View {
                 childFrames[frame.id] = frame.rect
             }
         }
-        // Drop target for the entire space's children area
-        .coordinateSpace(.named(spaceCoordName))
-        .dropDestination(for: ContainerDragData.self) { items, location in
-            handleDrop(items, at: location)
-        } isTargeted: { targeted in
-            // Currently unused; we rely on the natural row-shifting of ForEach
+        // Green insertion‑line overlay
+        .overlay(alignment: .topLeading) {
+            if let y = insertionLineY {
+                Rectangle()
+                    .fill(Color.green)
+                    .frame(height: 2)
+                    .frame(maxWidth: .infinity)
+                    .offset(y: y - 1) // centre the 2pt line on the target Y
+                    .transition(.opacity)
+                    .animation(.easeOut(duration: 0.12), value: insertionLineY)
+            }
         }
+        // Drop target with full location tracking via custom DropDelegate
+        .coordinateSpace(.named(spaceCoordName))
+        .onDrop(
+            of: [UTType.containerDrag],
+            delegate: InsertionLineDropDelegate(
+                children: children,
+                childFrames: childFrames,
+                insertionLineY: $insertionLineY,
+                performDropHandler: { dragData in
+                    self.handleDrop(dragData)
+                }
+            )
+        )
     }
 
     // MARK: - Row view
@@ -163,12 +310,14 @@ struct SpaceSectionView: View {
 
     // MARK: - Drop handling
 
-    private func handleDrop(_ items: [ContainerDragData], at location: CGPoint) -> Bool {
-        guard let dragData = items.first else { return false }
+    /// Called by `InsertionLineDropDelegate` when the drop completes.
+    /// Looks up the model from the drag payload and performs the reorder.
+    /// Reads `insertionLineY` to determine where to insert, then clears it.
+    private func handleDrop(_ dragData: ContainerDragData) {
+        // Snapshot the line position before clearing it.
+        let lineY = insertionLineY
+        insertionLineY = nil
 
-        let insertionIndex = insertionIndex(at: location)
-
-        // Look up the model from the context
         let modelID = dragData.containerID
         let child: ContainerChild? = {
             if dragData.isList,
@@ -180,16 +329,26 @@ struct SpaceSectionView: View {
             return nil
         }()
 
-        guard let child else { return false }
+        guard let child else { return }
 
-        // Animate the row into its new position with a smooth spring.
-        // The @Query re-fetches after context.save() inside moveChild,
-        // and withAnimation captures that diff for the ForEach transition.
+        // Compute insertion index from the line position.
+        // Find the child whose top edge is at (or just past) the line's Y,
+        // then insert before it.
+        let insertionIndex: Int = {
+            let sorted = children
+            guard !sorted.isEmpty else { return 0 }
+            guard let lineY else { return 0 }
+            for (i, child) in sorted.enumerated() {
+                if let rect = childFrames[child.id], rect.minY >= lineY {
+                    return i
+                }
+            }
+            return sorted.count
+        }()
+
         withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
             Containers.moveChild(child, to: space, at: insertionIndex, context: context)
         }
-
-        return true
     }
 
     /// Calculates the insertion index for a drop at `location.y` within this
@@ -202,24 +361,21 @@ struct SpaceSectionView: View {
         let sorted = children
         guard !sorted.isEmpty else { return 0 }
 
-        // Try precise frame-based positioning first
-        // Collect midY for each child in visual order
-        let midYs: [CGFloat] = sorted.compactMap { child in
+        let bottomEdges: [CGFloat] = sorted.compactMap { child in
             guard let rect = childFrames[child.id] else { return nil }
-            return rect.midY
+            return rect.maxY
         }
 
-        if midYs.count == sorted.count {
-            for (i, midY) in midYs.enumerated() {
-                if location.y < midY {
+        if bottomEdges.count == sorted.count {
+            for (i, maxY) in bottomEdges.enumerated() {
+                if location.y < maxY {
                     return i
                 }
             }
-            return midYs.count
+            return bottomEdges.count
         }
 
-        // Fallback: estimate from row height when some frames are missing
-        let rowHeight: CGFloat = 44
+        let rowHeight: CGFloat = 52
         let estimatedIndex = Int(floor(location.y / rowHeight))
         return min(max(estimatedIndex, 0), sorted.count)
     }
