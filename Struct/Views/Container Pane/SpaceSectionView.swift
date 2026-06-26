@@ -55,11 +55,7 @@ private struct InsertionLineDropDelegate: DropDelegate {
     }
 
     func dropExited(info: DropInfo) {
-        DispatchQueue.main.async {
-            withAnimation(.easeOut(duration: 0.15)) {
-                insertionLineY = nil
-            }
-        }
+        insertionLineY = nil
     }
 
     func performDrop(info: DropInfo) -> Bool {
@@ -111,11 +107,7 @@ private struct InsertionLineDropDelegate: DropDelegate {
             return CGFloat(index) * 52
         }()
 
-        DispatchQueue.main.async {
-            withAnimation(.easeOut(duration: 0.12)) {
-                insertionLineY = yPos
-            }
-        }
+        insertionLineY = yPos
     }
 
     // MARK: Index calculation
@@ -230,8 +222,15 @@ struct SpaceSectionView: View {
                         }
                     )
             }
+            // Invisible spacer extending the drop zone below the last child,
+            // enabling drops at the end of the list.
+            Rectangle()
+                .fill(Color.clear)
+                .contentShape(Rectangle())
+                .frame(height: 20)
         }
         .padding(.leading, 8)
+        .frame(minHeight: 60, alignment: .top)
         .errorAlert($saveError)
         // Receive frame updates
         .onPreferenceChange(ChildFramePreferenceKey.self) { frames in
@@ -241,15 +240,12 @@ struct SpaceSectionView: View {
         }
         // Green insertion‑line overlay
         .overlay(alignment: .topLeading) {
-            if let y = insertionLineY {
-                Rectangle()
-                    .fill(Color.green)
-                    .frame(height: 2)
-                    .frame(maxWidth: .infinity)
-                    .offset(y: y - 1) // centre the 2pt line on the target Y
-                    .transition(.opacity)
-                    .animation(.easeOut(duration: 0.12), value: insertionLineY)
-            }
+            Rectangle()
+                .fill(Color.green)
+                .frame(height: 2)
+                .frame(maxWidth: .infinity)
+                .opacity(insertionLineY != nil ? 1 : 0)
+                .offset(y: (insertionLineY ?? 0) - 1) // centre the 2pt line on the target Y
         }
         // Drop target with full location tracking via custom DropDelegate
         .coordinateSpace(.named(spaceCoordName))
@@ -334,10 +330,12 @@ struct SpaceSectionView: View {
         // Compute insertion index from the line position.
         // Find the child whose top edge is at (or just past) the line's Y,
         // then insert before it.
+        // When the space is empty or the line is past the last child,
+        // insert at the end (which is children.count).
         let insertionIndex: Int = {
             let sorted = children
+            guard let lineY else { return sorted.count }
             guard !sorted.isEmpty else { return 0 }
-            guard let lineY else { return 0 }
             for (i, child) in sorted.enumerated() {
                 if let rect = childFrames[child.id], rect.minY >= lineY {
                     return i
@@ -349,35 +347,6 @@ struct SpaceSectionView: View {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
             Containers.moveChild(child, to: space, at: insertionIndex, context: context)
         }
-    }
-
-    /// Calculates the insertion index for a drop at `location.y` within this
-    /// space's children VStack coordinate space.
-    ///
-    /// Uses the collected child frame rects for precise positioning. Falls
-    /// back to row-height estimation when frames aren't available (e.g. empty
-    /// space or first frame(s) not yet rendered).
-    private func insertionIndex(at location: CGPoint) -> Int {
-        let sorted = children
-        guard !sorted.isEmpty else { return 0 }
-
-        let bottomEdges: [CGFloat] = sorted.compactMap { child in
-            guard let rect = childFrames[child.id] else { return nil }
-            return rect.maxY
-        }
-
-        if bottomEdges.count == sorted.count {
-            for (i, maxY) in bottomEdges.enumerated() {
-                if location.y < maxY {
-                    return i
-                }
-            }
-            return bottomEdges.count
-        }
-
-        let rowHeight: CGFloat = 52
-        let estimatedIndex = Int(floor(location.y / rowHeight))
-        return min(max(estimatedIndex, 0), sorted.count)
     }
 
     // MARK: - Gesture callbacks
