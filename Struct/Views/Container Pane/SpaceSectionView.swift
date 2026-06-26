@@ -230,7 +230,7 @@ struct SpaceSectionView: View {
                 .frame(height: 20)
         }
         .padding(.leading, 8)
-        .frame(minHeight: 60, alignment: .top)
+        .frame(minHeight: 20, alignment: .top)
         .errorAlert($saveError)
         // Receive frame updates
         .onPreferenceChange(ChildFramePreferenceKey.self) { frames in
@@ -245,7 +245,7 @@ struct SpaceSectionView: View {
                 .frame(height: 2)
                 .frame(maxWidth: .infinity)
                 .opacity(insertionLineY != nil ? 1 : 0)
-                .offset(y: (insertionLineY ?? 0) - 1) // centre the 2pt line on the target Y
+                .offset(y: max(0, (insertionLineY ?? 0) - 2)) // centre the 2pt line on the target Y
         }
         // Drop target with full location tracking via custom DropDelegate
         .coordinateSpace(.named(spaceCoordName))
@@ -300,7 +300,16 @@ struct SpaceSectionView: View {
             containerID:   child.persistentModelID,
             isList:        child.isList,
             sourceSpaceID: space.persistentModelID
-        ))
+        )) {
+            ContainerRowView(
+                symbol: child.symbol,
+                title: child.title,
+                openTaskCount: child.openTaskCount,
+                color: child.containerColor
+            )
+            .frame(maxWidth: 240)
+            .scaleEffect(0.8)
+        }
         .padding(.bottom, 8)
     }
 
