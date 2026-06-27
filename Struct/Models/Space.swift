@@ -270,7 +270,11 @@ enum Containers {
         }
         let moved = targetChildren.remove(at: currentIdx)
         let clamped = min(index, targetChildren.count)
-        targetChildren.insert(moved, at: clamped)
+        // When dragging downward (currentIdx < clamped), removing the item from a
+        // lower index shifts all subsequent items up by one, so the target index
+        // must be reduced by one to compensate.
+        let adjusted = currentIdx < clamped ? clamped - 1 : clamped
+        targetChildren.insert(moved, at: adjusted)
 
         // 4. Re-number sequentially
         for (i, c) in targetChildren.enumerated() {
@@ -303,7 +307,11 @@ enum Containers {
         
         // Insert at new position (clamped to valid range)
         let newIndex = min(index, allSpaces.count)
-        allSpaces.insert(movedSpace, at: newIndex)
+        // When dragging downward (currentIndex < newIndex), removing the space from a
+        // lower index shifts all subsequent spaces up by one, so the target index
+        // must be reduced by one to compensate.
+        let adjustedIndex = currentIndex < newIndex ? newIndex - 1 : newIndex
+        allSpaces.insert(movedSpace, at: adjustedIndex)
         
         // Re-number all spaces sequentially
         for (i, s) in allSpaces.enumerated() {
