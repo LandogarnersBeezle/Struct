@@ -288,6 +288,31 @@ enum Containers {
         try? context.save()
     }
 
+    // MARK: Move Space
+
+    /// Moves a space to a new index in the global ordering.
+    /// Re-indexes all spaces to maintain sequential sort indices.
+    static func moveSpace(_ space: Space, to index: Int, context: ModelContext) {
+        // Fetch all spaces sorted by current sortIndex
+        let descriptor = FetchDescriptor<Space>(sortBy: [SortDescriptor(\.sortIndex)])
+        guard var allSpaces = try? context.fetch(descriptor), !allSpaces.isEmpty else { return }
+        
+        // Remove the space from its current position
+        guard let currentIndex = allSpaces.firstIndex(where: { $0.persistentModelID == space.persistentModelID }) else { return }
+        let movedSpace = allSpaces.remove(at: currentIndex)
+        
+        // Insert at new position (clamped to valid range)
+        let newIndex = min(index, allSpaces.count)
+        allSpaces.insert(movedSpace, at: newIndex)
+        
+        // Re-number all spaces sequentially
+        for (i, s) in allSpaces.enumerated() {
+            s.sortIndex = i
+        }
+        
+        try? context.save()
+    }
+
     // MARK: Migration
 
     /// Migrates a space whose lists and projects still occupy separate

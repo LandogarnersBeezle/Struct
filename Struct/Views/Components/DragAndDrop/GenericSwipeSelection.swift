@@ -98,6 +98,26 @@ extension GenericSwipeSelection where Item == SwipeableContainerKind {
         }
     }
 }
+// MARK: - Sidebar Collapse State
+
+/// Shared observable state that tracks whether the sidebar is in "reorder mode"
+/// (i.e., a space header is being long-pressed for reordering).
+/// When active, all space sections collapse their children.
+@Observable
+class SidebarCollapseState {
+    static let shared = SidebarCollapseState()
+    
+    /// The space currently being dragged for reordering, or nil if not dragging.
+    var draggingSpace: Space? = nil
+    
+    /// Returns true when any space is being dragged.
+    var isCollapsing: Bool {
+        draggingSpace != nil
+    }
+    
+    private init() {}
+}
+
 
 // MARK: - Delete Alert State
 

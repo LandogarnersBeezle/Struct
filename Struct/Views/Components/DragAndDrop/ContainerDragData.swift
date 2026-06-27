@@ -29,8 +29,20 @@ struct ContainerDragData: Codable, Transferable {
     }
 }
 
+// MARK: - Space Drag Data
+
+/// Payload transferred during a space reorder drag-and-drop operation.
+struct SpaceDragData: Codable, Transferable {
+    let spaceID: PersistentIdentifier
+    
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .spaceDrag)
+    }
+}
+
 // MARK: - Custom UTType
 
 extension UTType {
     static let containerDrag = UTType(exportedAs: "com.struct.containerDrag")
+    static let spaceDrag = UTType(exportedAs: "com.struct.spaceDrag")
 }
