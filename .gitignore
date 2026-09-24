@@ -1,0 +1,47 @@
+# Xcode
+#
+# gitignore contributors: remember to update Global/Xcode.gitignore, or the
+# "Xcode" tab in .gitignore templates.
+
+# User-specific
+xcuserdata/
+*.xccheckout
+*.moc
+*.xccovreport
+*.xcovgraph
+*.xcuserstate
+*.xcuserdatad
+*.xccovarchive
+
+# Build products
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Compatibility
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# macOS
+.DS_Store
