@@ -10,8 +10,8 @@ import Foundation
 /// The kinds of container in the app's hierarchy.
 ///
 /// A space is a top-level container that groups the lists and projects that
-/// follow it. Lists and projects either live inside a space or exist on their
-/// own above the first space.
+/// belong to it. Lists and projects either live inside a space (with `parentID`
+/// pointing to that space) or exist on their own (`parentID == nil`).
 enum ContainerKind: String, CaseIterable, Sendable {
     case space
     case list
@@ -36,19 +36,32 @@ enum ContainerKind: String, CaseIterable, Sendable {
 
 /// A single entry of the container list.
 ///
-/// The type stays a plain value type so the reordering rules can be exercised
-/// without a user interface. When persistence arrives, this maps onto a model
-/// type carrying a sort index and an optional parent.
+/// Under the hybrid architecture, each item explicitly declares its optional parent
+/// (`parentID`) and its relative ordering. This prepares the model for relational
+/// persistence (SwiftData / CoreData / SQLite) and multi-level hierarchies.
 struct ContainerItem: Identifiable, Hashable, Sendable {
     let id: UUID
     var kind: ContainerKind
     var name: String
+    /// The parent space if nested, or `nil` if top-level / autonomous.
+    var parentID: UUID?
+    /// Explicit ordering index among siblings.
+    var sortOrder: Double
 
-    init(id: UUID = UUID(), kind: ContainerKind, name: String) {
+    init(
+        id: UUID = UUID(),
+        kind: ContainerKind,
+        name: String,
+        parentID: UUID? = nil,
+        sortOrder: Double = 0
+    ) {
         self.id = id
         self.kind = kind
         self.name = name
+        self.parentID = parentID
+        self.sortOrder = sortOrder
     }
 
     var isSpace: Bool { kind == .space }
 }
+

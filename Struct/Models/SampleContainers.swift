@@ -9,23 +9,31 @@ import Foundation
 
 /// Sample containers with stable identifiers, so previews and the reorder
 /// scenarios always describe the same data.
+///
+/// In the hybrid architecture, parentage and sibling sort orders are explicit.
 enum SampleContainers {
-    // Sole lists and projects: they sit above the first space.
-    static let inbox = ContainerItem(id: sampleID(1), kind: .list, name: "Inbox")
-    static let portfolio = ContainerItem(id: sampleID(2), kind: .project, name: "Portfolio Site")
+    // Sole lists and projects: autonomous (parentID == nil)
+    static let inbox = ContainerItem(id: sampleID(1), kind: .list, name: "Inbox", parentID: nil, sortOrder: 100)
+    static let portfolio = ContainerItem(id: sampleID(2), kind: .project, name: "Portfolio Site", parentID: nil, sortOrder: 200)
 
-    static let work = ContainerItem(id: sampleID(10), kind: .space, name: "Work")
-    static let sprintBacklog = ContainerItem(id: sampleID(11), kind: .list, name: "Sprint Backlog")
-    static let meetingNotes = ContainerItem(id: sampleID(12), kind: .list, name: "Meeting Notes")
-    static let roadmap = ContainerItem(id: sampleID(13), kind: .project, name: "Q3 Roadmap")
+    // Work space & children
+    static let workID = sampleID(10)
+    static let work = ContainerItem(id: workID, kind: .space, name: "Work", parentID: nil, sortOrder: 300)
+    static let sprintBacklog = ContainerItem(id: sampleID(11), kind: .list, name: "Sprint Backlog", parentID: workID, sortOrder: 100)
+    static let meetingNotes = ContainerItem(id: sampleID(12), kind: .list, name: "Meeting Notes", parentID: workID, sortOrder: 200)
+    static let roadmap = ContainerItem(id: sampleID(13), kind: .project, name: "Q3 Roadmap", parentID: workID, sortOrder: 300)
 
-    static let personal = ContainerItem(id: sampleID(20), kind: .space, name: "Personal")
-    static let groceries = ContainerItem(id: sampleID(21), kind: .list, name: "Groceries")
-    static let homeStudio = ContainerItem(id: sampleID(22), kind: .project, name: "Home Studio")
+    // Personal space & children
+    static let personalID = sampleID(20)
+    static let personal = ContainerItem(id: personalID, kind: .space, name: "Personal", parentID: nil, sortOrder: 400)
+    static let groceries = ContainerItem(id: sampleID(21), kind: .list, name: "Groceries", parentID: personalID, sortOrder: 100)
+    static let homeStudio = ContainerItem(id: sampleID(22), kind: .project, name: "Home Studio", parentID: personalID, sortOrder: 200)
 
-    static let reading = ContainerItem(id: sampleID(30), kind: .space, name: "Reading")
-    static let wantToRead = ContainerItem(id: sampleID(31), kind: .list, name: "Want to Read")
-    static let bookNotes = ContainerItem(id: sampleID(32), kind: .project, name: "Book Notes")
+    // Reading space & children
+    static let readingID = sampleID(30)
+    static let reading = ContainerItem(id: readingID, kind: .space, name: "Reading", parentID: nil, sortOrder: 500)
+    static let wantToRead = ContainerItem(id: sampleID(31), kind: .list, name: "Want to Read", parentID: readingID, sortOrder: 100)
+    static let bookNotes = ContainerItem(id: sampleID(32), kind: .project, name: "Book Notes", parentID: readingID, sortOrder: 200)
 
     /// The order the list starts with.
     static let all: [ContainerItem] = [
@@ -45,3 +53,4 @@ private func sampleID(_ value: Int) -> UUID {
     }
     return id
 }
+

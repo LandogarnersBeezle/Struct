@@ -7,28 +7,26 @@
 
 import Foundation
 
-/// Applies a reordering operation to the flat container array.
+/// Applies a reordering operation in the hybrid architecture.
 ///
-/// The array itself is the hierarchy, so every rule about parents, children and
-/// the sole lists and projects is expressed as index arithmetic on this array.
+/// In the hybrid architecture, items have explicit `parentID` and `sortOrder`.
+/// Moving items resolves their updated parentage and order while maintaining
+/// continuous sorting invariants and moving spaces along with their explicit children.
 enum ContainerMove {
-    /// The containers that travel with one item: a list or project on its own,
-    /// or a space together with the lists and projects that follow it.
-    static func blockRange(startingAt index: Int, in items: [ContainerItem]) -> Range<Int> {
-        guard items.indices.contains(index) else { return index..<index }
-        guard items[index].isSpace else { return index..<(index + 1) }
-        var end = index + 1
-        while end < items.count, !items[end].isSpace { end += 1 }
-        return index..<end
-    }
-
-    /// The identifiers of everything that travels with `id`.
+    /// Everything that travels with `id`:
+    /// If `id` is a space, it travels with all items where `parentID == id`.
+    /// Otherwise, just `id`.
     static func travellingIdentifiers(for id: ContainerItem.ID, in items: [ContainerItem]) -> [ContainerItem.ID] {
-        guard let index = items.index(of: id) else { return [] }
-        return blockRange(startingAt: index, in: items).map { items[$0].id }
+        guard let item = items.first(where: { $0.id == id }) else { return [] }
+        if item.isSpace {
+            let childIDs = items.filter { $0.parentID == item.id }.map(\.id)
+            return [item.id] + childIDs
+        } else {
+            return [item.id]
+        }
     }
 
-    /// The identifiers of everything that travels with `ids`.
+    /// The union of all identifiers that travel when multiple `ids` are dragged.
     static func movingIdentifiers(in items: [ContainerItem], moving ids: [ContainerItem.ID]) -> Set<ContainerItem.ID> {
         var moving: Set<ContainerItem.ID> = []
         for id in ids {
@@ -37,15 +35,45 @@ enum ContainerMove {
         return moving
     }
 
-    /// Number of sole lists and projects above the first space.
+    /// Number of autonomous (sole) lists and projects above the first space.
     static func soleRegionLength(in items: [ContainerItem]) -> Int {
-        items.prefix { !$0.isSpace }.count
+        items.prefix { !$0.isSpace && $0.parentID == nil }.count
     }
 
-    /// Moves `ids` – together with the children of any space among them – so
-    /// that they end up directly before `destinationIndex`.
+    /// Projects and sorts a set of items into canonical visual display order:
+    /// 1. Autonomous items (parentID == nil && !isSpace) sorted by `sortOrder`
+    /// 2. For each space (sorted by `sortOrder`):
+    ///    - the space itself
+    ///    - its children (parentID == space.id) sorted by `sortOrder`
+    static func projectSorted(_ items: [ContainerItem]) -> [ContainerItem] {
+        let autonomous = items
+            .filter { !$0.isSpace && $0.parentID == nil }
+            .sorted { $0.sortOrder < $1.sortOrder }
+
+        let spaces = items
+            .filter { $0.isSpace }
+            .sorted { $0.sortOrder < $1.sortOrder }
+
+        var result: [ContainerItem] = []
+        result.reserveCapacity(items.count)
+        result.append(contentsOf: autonomous)
+
+        for space in spaces {
+            result.append(space)
+            let children = items
+                .filter { $0.parentID == space.id }
+                .sorted { $0.sortOrder < $1.sortOrder }
+            result.append(contentsOf: children)
+        }
+
+        return result
+    }
+
+    /// Moves `ids` – together with the explicit children of any space among them – so
+    /// that they end up placed directly before `destinationIndex` in the visual list.
     ///
-    /// `destinationIndex` refers to `items` as it is *before* the move.
+    /// `destinationIndex` refers to `items` as displayed *before* the move.
+    /// Returns the updated items with explicit `parentID` and `sortOrder` normalized.
     static func resolve(
         _ items: [ContainerItem],
         moving ids: [ContainerItem.ID],
@@ -64,21 +92,45 @@ enum ContainerMove {
         // Number of remaining containers that precede the drop anchor.
         var insertionIndex = items[..<anchor].filter { !moving.contains($0.id) }.count
 
-        // The sole lists and projects own the region above the first space, so a
-        // space that is dropped there – or onto one of them – snaps to the end of
-        // that region and leaves them untouched.
+        // The sole lists and projects own the region above the first space:
+        // A space dropped there (or onto one of them) snaps to the start of the spaces region.
         if travelling.contains(where: \.isSpace) {
-            insertionIndex = max(insertionIndex, soleRegionLength(in: items))
+            let soleCount = remaining.prefix { !$0.isSpace && $0.parentID == nil }.count
+            insertionIndex = max(insertionIndex, soleCount)
             insertionIndex = min(insertionIndex, remaining.count)
         }
 
-        var result = remaining
-        result.insert(contentsOf: travelling, at: insertionIndex)
-        return normalize(result)
+        var visualOrder = remaining
+        visualOrder.insert(contentsOf: travelling, at: insertionIndex)
+
+        // Now derive explicit relational attributes (parentID & sortOrder) from this visual ordering.
+        return normalizeRelations(visualOrder)
     }
 
-    /// Hook for rules about the resulting order. The flat array already
-    /// guarantees that a space is never nested inside another space, so this
-    /// returns the order unchanged.
-    static func normalize(_ items: [ContainerItem]) -> [ContainerItem] { items }
+    /// Derives explicit `parentID` and normalized `sortOrder` from a visual list sequence.
+    /// This keeps the domain models synchronized with the visual projection.
+    static func normalizeRelations(_ visualItems: [ContainerItem]) -> [ContainerItem] {
+        var currentSpaceID: ContainerItem.ID? = nil
+        var normalized: [ContainerItem] = []
+        normalized.reserveCapacity(visualItems.count)
+
+        var orderCounter: Double = 100
+
+        for var item in visualItems {
+            if item.isSpace {
+                currentSpaceID = item.id
+                item.parentID = nil
+                item.sortOrder = orderCounter
+                orderCounter += 100
+            } else {
+                item.parentID = currentSpaceID
+                item.sortOrder = orderCounter
+                orderCounter += 100
+            }
+            normalized.append(item)
+        }
+
+        return normalized
+    }
 }
+
