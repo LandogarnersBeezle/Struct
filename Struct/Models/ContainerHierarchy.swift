@@ -15,6 +15,8 @@ struct ContainerRowPresentation: Equatable, Sendable {
     var childCount = 0
     /// `true` for a list or project that sits above the spaces (autonomous/sole).
     var isAutonomous = false
+    /// For a space: whether its children are currently expanded.
+    var isExpanded = true
 }
 
 /// Hybrid projection helpers.
@@ -71,14 +73,16 @@ extension Array where Element == ContainerItem {
                 presentations[item.id] = ContainerRowPresentation(
                     depth: 0,
                     childCount: counts[item.id] ?? 0,
-                    isAutonomous: false
+                    isAutonomous: false,
+                    isExpanded: item.isExpanded
                 )
             } else {
                 let isAuto = item.parentID == nil
                 presentations[item.id] = ContainerRowPresentation(
                     depth: isAuto ? 0 : 1,
                     childCount: 0,
-                    isAutonomous: isAuto
+                    isAutonomous: isAuto,
+                    isExpanded: true
                 )
             }
         }

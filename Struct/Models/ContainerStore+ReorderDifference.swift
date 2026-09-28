@@ -17,9 +17,9 @@ extension ContainerStore {
     func apply(_ difference: ReorderDifference<ContainerItem.ID, ReorderableSingleCollectionIdentifier>) {
         switch difference.destination.position {
         case .before(let id):
-            move(difference.sources, to: items.index(of: id) ?? items.count)
+            move(difference.sources, before: id)
         case .end:
-            move(difference.sources, to: items.count)
+            move(difference.sources, before: nil)
         }
     }
 }

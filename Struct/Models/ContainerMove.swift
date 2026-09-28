@@ -70,6 +70,47 @@ enum ContainerMove {
     }
 
     /// Moves `ids` – together with the explicit children of any space among them – so
+    /// that they end up placed directly before `destinationID` in the visual list.
+    /// If `destinationID` is `nil`, they are placed at the end of the list.
+    ///
+    /// Returns the updated items with explicit `parentID` and `sortOrder` normalized.
+    static func resolve(
+        _ items: [ContainerItem],
+        moving ids: [ContainerItem.ID],
+        before destinationID: ContainerItem.ID?
+    ) -> [ContainerItem] {
+        let moving = movingIdentifiers(in: items, moving: ids)
+        guard !moving.isEmpty else { return items }
+
+        // Dropping onto an item that travels with the drag keeps the order.
+        if let destinationID, moving.contains(destinationID) {
+            return items
+        }
+
+        let travelling = items.filter { moving.contains($0.id) }
+        var remaining = items.filter { !moving.contains($0.id) }
+
+        var insertionIndex: Int
+        if let destinationID, let targetIndex = remaining.firstIndex(where: { $0.id == destinationID }) {
+            insertionIndex = targetIndex
+        } else {
+            insertionIndex = remaining.count
+        }
+
+        // The sole lists and projects own the region above the first space:
+        // A space dropped there (or onto one of them) snaps to the start of the spaces region.
+        if travelling.contains(where: \.isSpace) {
+            let soleCount = remaining.prefix { !$0.isSpace && $0.parentID == nil }.count
+            insertionIndex = max(insertionIndex, soleCount)
+        }
+
+        remaining.insert(contentsOf: travelling, at: insertionIndex)
+
+        // Derive explicit relational attributes (parentID & sortOrder) from this visual ordering.
+        return normalizeRelations(remaining)
+    }
+
+    /// Moves `ids` – together with the explicit children of any space among them – so
     /// that they end up placed directly before `destinationIndex` in the visual list.
     ///
     /// `destinationIndex` refers to `items` as displayed *before* the move.
@@ -79,44 +120,18 @@ enum ContainerMove {
         moving ids: [ContainerItem.ID],
         destinationIndex: Int
     ) -> [ContainerItem] {
-        let moving = movingIdentifiers(in: items, moving: ids)
-        guard !moving.isEmpty else { return items }
-
-        let anchor = max(0, min(destinationIndex, items.count))
-        // Dropping onto a container that travels with the drag keeps the order.
-        if anchor < items.count, moving.contains(items[anchor].id) { return items }
-
-        let travelling = items.filter { moving.contains($0.id) }
-        let remaining = items.filter { !moving.contains($0.id) }
-
-        // Number of remaining containers that precede the drop anchor.
-        var insertionIndex = items[..<anchor].filter { !moving.contains($0.id) }.count
-
-        // The sole lists and projects own the region above the first space:
-        // A space dropped there (or onto one of them) snaps to the start of the spaces region.
-        if travelling.contains(where: \.isSpace) {
-            let soleCount = remaining.prefix { !$0.isSpace && $0.parentID == nil }.count
-            insertionIndex = max(insertionIndex, soleCount)
-            insertionIndex = min(insertionIndex, remaining.count)
-        }
-
-        var visualOrder = remaining
-        visualOrder.insert(contentsOf: travelling, at: insertionIndex)
-
-        // Now derive explicit relational attributes (parentID & sortOrder) from this visual ordering.
-        return normalizeRelations(visualOrder)
+        let destinationID = items.indices.contains(destinationIndex) ? items[destinationIndex].id : nil
+        return resolve(items, moving: ids, before: destinationID)
     }
 
     /// Derives explicit `parentID` and normalized `sortOrder` from a visual list sequence.
     /// This keeps the domain models synchronized with the visual projection.
     static func normalizeRelations(_ visualItems: [ContainerItem]) -> [ContainerItem] {
         var currentSpaceID: ContainerItem.ID? = nil
-        var normalized: [ContainerItem] = []
-        normalized.reserveCapacity(visualItems.count)
 
         var orderCounter: Double = 100
 
-        for var item in visualItems {
+        for item in visualItems {
             if item.isSpace {
                 currentSpaceID = item.id
                 item.parentID = nil
@@ -127,10 +142,9 @@ enum ContainerMove {
                 item.sortOrder = orderCounter
                 orderCounter += 100
             }
-            normalized.append(item)
         }
 
-        return normalized
+        return visualItems
     }
 }
 

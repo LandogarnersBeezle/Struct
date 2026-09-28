@@ -11,6 +11,7 @@ import SwiftUI
 struct ContainerRowView: View {
     let item: ContainerItem
     let presentation: ContainerRowPresentation
+    var onToggleExpand: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -28,6 +29,21 @@ struct ContainerRowView: View {
                 }
             }
             Spacer(minLength: 0)
+
+            if item.isSpace {
+                Button {
+                    onToggleExpand?()
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(presentation.isExpanded ? 90 : 0))
+                        .animation(.snappy(duration: 0.2), value: presentation.isExpanded)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .padding(8)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.leading, CGFloat(presentation.depth) * 22)
         .padding(.vertical, 2)
@@ -54,8 +70,8 @@ extension ContainerKind {
 
 #Preview("Rows") {
     List {
-        ContainerRowView(item: SampleContainers.inbox, presentation: ContainerRowPresentation(isAutonomous: true))
-        ContainerRowView(item: SampleContainers.work, presentation: ContainerRowPresentation(childCount: 3))
-        ContainerRowView(item: SampleContainers.sprintBacklog, presentation: ContainerRowPresentation(depth: 1))
+        ContainerRowView(item: SampleContainers.sampleInbox, presentation: ContainerRowPresentation(isAutonomous: true))
+        ContainerRowView(item: SampleContainers.sampleWork, presentation: ContainerRowPresentation(childCount: 3))
+        ContainerRowView(item: SampleContainers.sampleSprintBacklog, presentation: ContainerRowPresentation(depth: 1))
     }
 }
